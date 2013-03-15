@@ -1,8 +1,8 @@
 /*--------------------------------------------------------------------
   
-  NAS Parallel Benchmarks 2.3 OpenMP C versions - BT
+  NAS Parallel Benchmarks 2.3 OpenACC C versions - BT
 
-  This benchmark is an OpenMP C version of the NPB BT code.
+  This benchmark is an OpenACC C version of the NPB BT code.
   
   The OpenMP C versions are developed by RWCP and derived from the serial
   Fortran versions in "NPB 2.3-serial" developed by NAS.
@@ -29,6 +29,7 @@
            M. Yarrow
 
   OpenMP C version: S. Satoh
+  OpenACC C version: P. Makpaisit
   
 --------------------------------------------------------------------*/
 
@@ -43,8 +44,6 @@ static void adi(void);
 static void error_norm(double rms[5]);
 static void rhs_norm(double rms[5]);
 static void exact_rhs(void);
-static void exact_solution(double xi, double eta, double zeta,
-			   double dtemp[5]);
 static void initialize(void);
 static void lhsinit(void);
 static void lhsx(void);
@@ -56,11 +55,6 @@ static void verify(int no_time_steps, char *class, boolean *verified);
 static void x_solve(void);
 static void x_backsubstitute(void);
 static void x_solve_cell(void);
-static void matvec_sub(double ablock[5][5], double avec[5], double bvec[5]);
-static void matmul_sub(double ablock[5][5], double bblock[5][5],
-		       double cblock[5][5]);
-static void binvcrhs(double lhs[5][5], double c[5][5], double r[5]);
-static void binvrhs(double lhs[5][5], double r[5]);
 static void y_solve(void);
 static void y_backsubstitute(void);
 static void y_solve_cell(void);
@@ -68,13 +62,13 @@ static void z_solve(void);
 static void z_backsubstitute(void);
 static void z_solve_cell(void);
 
+
 /*--------------------------------------------------------------------
       program BT
 c-------------------------------------------------------------------*/
 int main(int argc, char **argv) {
     
   int niter, step, n3;
-  int nthreads = 1;
   double navg, mflops;
 
   double tmax;
@@ -124,6 +118,10 @@ c-------------------------------------------------------------------*/
 
   set_constants();
 
+  #pragma acc data create(u,ue,forcing,cuf,buf,q) \
+    create(us,vs,ws,qs,rho_i,square,lhs,rhs,fjac,njac) \
+    copyin(grid_points,ce)
+  {
   initialize();
 
   lhsinit();
@@ -150,6 +148,7 @@ c-------------------------------------------------------------------*/
     adi();
   }
 
+  } /* end pragma acc data */
 
   timer_stop(1);
   tmax = timer_read(1);
@@ -165,7 +164,7 @@ c-------------------------------------------------------------------*/
     mflops = 0.0;
   }
   c_print_results("BT", class, grid_points[0], 
-		  grid_points[1], grid_points[2], niter, nthreads,
+		  grid_points[1], grid_points[2], niter,
 		  tmax, mflops, "          floating point", 
 		  verified, NPBVERSION,COMPILETIME, CS1, CS2, CS3, CS4, CS5, 
 		  CS6, "(none)");
@@ -182,7 +181,7 @@ c-------------------------------------------------------------------*/
 
   int i, j, k, m;
   
-  #pragma acc kernels present(u,rhs) present_or_copyin(grid_points)
+  #pragma acc kernels present(u,grid_points,rhs)
   for (i = 1; i < grid_points[0]-1; i++) {
     for (j = 1; j < grid_points[1]-1; j++) {
       for (k = 1; k < grid_points[2]-1; k++) {
@@ -232,7 +231,7 @@ c-------------------------------------------------------------------*/
       eta = (double)j * dnym1;
       for (k = 0; k < grid_points[2]; k++) {
 	zeta = (double)k * dnzm1;
-	exact_solution(xi, eta, zeta, u_exact);
+    EXACT_SOLUTION(m, xi, eta, zeta, u_exact);
 
 	for (m = 0; m < 5; m++) {
 	  add = u[i][j][k][m] - u_exact[m];
@@ -303,7 +302,7 @@ c-------------------------------------------------------------------*/
 /*--------------------------------------------------------------------
 c     initialize                                  
 c-------------------------------------------------------------------*/
-  #pragma acc kernels present_or_create(forcing) present_or_copyin(grid_points)
+  #pragma acc kernels present(forcing, grid_points)
   for (i = 0; i < grid_points[0]; i++) {
     for (j = 0; j < grid_points[1]; j++) {
       for (k = 0; k < grid_points[2]; k++) {
@@ -317,8 +316,8 @@ c-------------------------------------------------------------------*/
 /*--------------------------------------------------------------------
 c     xi-direction flux differences                      
 c-------------------------------------------------------------------*/
-  #pragma acc kernels present_or_create(ue, dtemp, cuf, buf, q) \
-    present(forcing) present_or_copyin(grid_points)
+  #pragma acc kernels present(ue, cuf, buf, q, grid_points, forcing) \
+    present_or_create(dtemp)
   for (j = 1; j < grid_points[1]-1; j++) {
     eta = (double)j * dnym1;
     
@@ -328,7 +327,7 @@ c-------------------------------------------------------------------*/
       for (i = 0; i < grid_points[0]; i++) {
 	xi = (double)i * dnxm1;
 
-	exact_solution(xi, eta, zeta, dtemp);
+    EXACT_SOLUTION(m, xi, eta, zeta, dtemp);
 	for (m = 0; m < 5; m++) {
 	  ue[i][m] = dtemp[m];
 	}
@@ -417,8 +416,8 @@ c-------------------------------------------------------------------*/
 /*--------------------------------------------------------------------
 c     eta-direction flux differences             
 c-------------------------------------------------------------------*/
-  #pragma acc kernels present(ue, dtemp, cuf, buf, forcing, q) \
-    present_or_copyin(grid_points)
+  #pragma acc kernels present(ue, cuf, buf, q, grid_points, forcing) \
+    present_or_create(dtemp)
   for (i = 1; i < grid_points[0]-1; i++) {
     xi = (double)i * dnxm1;
     
@@ -428,7 +427,7 @@ c-------------------------------------------------------------------*/
       for (j = 0; j < grid_points[1]; j++) {
 	eta = (double)j * dnym1;
 
-	exact_solution(xi, eta, zeta, dtemp);
+    EXACT_SOLUTION(m, xi, eta, zeta, dtemp);
 	for (m = 0; m < 5; m++) {
 	  ue[j][m] = dtemp[m];
 	}
@@ -518,8 +517,8 @@ c-------------------------------------------------------------------*/
 /*--------------------------------------------------------------------
 c     zeta-direction flux differences                      
 c-------------------------------------------------------------------*/
-#pragma acc kernels present(dtemp, buf, cuf, q, ue, forcing)
-    present_or_copyin(grid_points)
+  #pragma acc kernels present(ue, cuf, buf, q, grid_points, forcing) \
+    present_or_create(dtemp)
   for (i = 1; i < grid_points[0]-1; i++) {
     xi = (double)i * dnxm1;
     
@@ -529,7 +528,7 @@ c-------------------------------------------------------------------*/
       for (k = 0; k < grid_points[2]; k++) {
 	zeta = (double)k * dnzm1;
 
-	exact_solution(xi, eta, zeta, dtemp);
+    EXACT_SOLUTION(m, xi, eta, zeta, dtemp);
 	for (m = 0; m < 5; m++) {
 	  ue[k][m] = dtemp[m];
 	}
@@ -618,7 +617,7 @@ c-------------------------------------------------------------------*/
 /*--------------------------------------------------------------------
 c     now change the sign of the forcing function, 
 c-------------------------------------------------------------------*/
-  #pragma acc kernels present(forcing) present_or_copyin(grid_points)
+  #pragma acc kernels present(forcing, grid_points)
   for (i = 1; i < grid_points[0]-1; i++) {
     for (j = 1; j < grid_points[1]-1; j++) {
       for (k = 1; k < grid_points[2]-1; k++) {
@@ -627,32 +626,6 @@ c-------------------------------------------------------------------*/
 	}
       }
     }
-  }
-}
-
-/*--------------------------------------------------------------------
---------------------------------------------------------------------*/
-
-static void exact_solution(double xi, double eta, double zeta,
-			   double dtemp[5]) {
-
-/*--------------------------------------------------------------------
---------------------------------------------------------------------*/
-
-/*--------------------------------------------------------------------
-c     this function returns the exact solution at point xi, eta, zeta  
-c-------------------------------------------------------------------*/
-
-  int m;
-
-  for (m = 0; m < 5; m++) {
-    dtemp[m] =  ce[m][0] +
-      xi*(ce[m][1] + xi*(ce[m][4] + xi*(ce[m][7]
-					+ xi*ce[m][10]))) +
-      eta*(ce[m][2] + eta*(ce[m][5] + eta*(ce[m][8]
-					   + eta*ce[m][11])))+
-      zeta*(ce[m][3] + zeta*(ce[m][6] + zeta*(ce[m][9] + 
-					      zeta*ce[m][12])));
   }
 }
 
@@ -678,7 +651,7 @@ c  the corner elements are not used, but it convenient (and faster)
 c  to compute the whole thing with a simple loop. Make sure those 
 c  values are nonzero by initializing the whole thing here. 
 c-------------------------------------------------------------------*/
-  #pragma acc kernels present_or_create(u)
+  #pragma acc kernels present(u)
   for (i = 0; i < IMAX; i++) {
     for (j = 0; j < IMAX; j++) {
       for (k = 0; k < IMAX; k++) {
@@ -693,8 +666,8 @@ c-------------------------------------------------------------------*/
 c     first store the "interpolated" values everywhere on the grid    
 c-------------------------------------------------------------------*/
 
-  #pragma acc kernels present_or_create(Pface) present(u) \
-    present_or_copyin(grid_points)
+  #pragma acc kernels present(u,grid_points) \
+    present_or_create(Pface)
   for (i = 0; i < grid_points[0]; i++) {
     xi = (double)i * dnxm1;
     
@@ -705,17 +678,17 @@ c-------------------------------------------------------------------*/
 	zeta = (double)k * dnzm1;
                   
 	for (ix = 0; ix < 2; ix++) {
-	  exact_solution((double)ix, eta, zeta, 
+      EXACT_SOLUTION(m, (double)ix, eta, zeta,
                          &(Pface[ix][0][0]));
 	}
 
 	for (iy = 0; iy < 2; iy++) {
-	  exact_solution(xi, (double)iy , zeta, 
+      EXACT_SOLUTION(m, xi, (double)iy , zeta,
                          &Pface[iy][1][0]);
 	}
 
 	for (iz = 0; iz < 2; iz++) {
-	  exact_solution(xi, eta, (double)iz,   
+      EXACT_SOLUTION(m, xi, eta, (double)iz,
                          &Pface[iz][2][0]);
 	}
 
@@ -744,13 +717,13 @@ c     west face
 c-------------------------------------------------------------------*/
   i = 0;
   xi = 0.0;
-  #pragma acc kernels present_or_create(temp) present(u) \
-    present_or_copyin(grid_points)
+  #pragma acc kernels present(u,grid_points) \
+    present_or_create(temp)
   for (j = 0; j < grid_points[1]; j++) {
     eta = (double)j * dnym1;
     for (k = 0; k < grid_points[2]; k++) {
       zeta = (double)k * dnzm1;
-      exact_solution(xi, eta, zeta, temp);
+      EXACT_SOLUTION(m, xi, eta, zeta, temp);
       for (m = 0; m < 5; m++) {
 	u[i][j][k][m] = temp[m];
       }
@@ -763,13 +736,13 @@ c-------------------------------------------------------------------*/
 
   i = grid_points[0]-1;
   xi = 1.0;
-  #pragma acc kernels present_or_create(temp) present(u) \
-    present_or_copyin(grid_points)
+  #pragma acc kernels present(u,grid_points) \
+    present_or_create(temp)
   for (j = 0; j < grid_points[1]; j++) {
     eta = (double)j * dnym1;
     for (k = 0; k < grid_points[2]; k++) {
       zeta = (double)k * dnzm1;
-      exact_solution(xi, eta, zeta, temp);
+      EXACT_SOLUTION(m, xi, eta, zeta, temp);
       for (m = 0; m < 5; m++) {
 	u[i][j][k][m] = temp[m];
       }
@@ -781,13 +754,13 @@ c     south face
 c-------------------------------------------------------------------*/
   j = 0;
   eta = 0.0;
-  #pragma acc kernels present_or_create(temp) present(u) \
-    present_or_copyin(grid_points)
+  #pragma acc kernels present(u,grid_points) \
+    present_or_create(temp)
   for (i = 0; i < grid_points[0]; i++) {
     xi = (double)i * dnxm1;
     for (k = 0; k < grid_points[2]; k++) {
       zeta = (double)k * dnzm1;
-      exact_solution(xi, eta, zeta, temp);
+      EXACT_SOLUTION(m, xi, eta, zeta, temp);
       for (m = 0; m < 5; m++) {
 	u[i][j][k][m] = temp[m];
       }
@@ -799,13 +772,13 @@ c     north face
 c-------------------------------------------------------------------*/
   j = grid_points[1]-1;
   eta = 1.0;
-  #pragma acc kernels present_or_create(temp) present(u) \
-    present_or_copyin(grid_points)
+  #pragma acc kernels present(u,grid_points) \
+    present_or_create(temp)
   for (i = 0; i < grid_points[0]; i++) {
     xi = (double)i * dnxm1;
     for (k = 0; k < grid_points[2]; k++) {
       zeta = (double)k * dnzm1;
-      exact_solution(xi, eta, zeta, temp);
+      EXACT_SOLUTION(m, xi, eta, zeta, temp);
       for (m = 0; m < 5; m++) {
 	u[i][j][k][m] = temp[m];
       }
@@ -817,13 +790,13 @@ c     bottom face
 c-------------------------------------------------------------------*/
   k = 0;
   zeta = 0.0;
-  #pragma acc kernels present_or_create(temp) present(u) \
-    present_or_copyin(grid_points)
+  #pragma acc kernels present(u,grid_points) \
+    present_or_create(temp)
   for (i = 0; i < grid_points[0]; i++) {
     xi = (double)i *dnxm1;
     for (j = 0; j < grid_points[1]; j++) {
       eta = (double)j * dnym1;
-      exact_solution(xi, eta, zeta, temp);
+      EXACT_SOLUTION(m, xi, eta, zeta, temp);
       for (m = 0; m < 5; m++) {
 	u[i][j][k][m] = temp[m];
       }
@@ -835,13 +808,13 @@ c     top face
 c-------------------------------------------------------------------*/
   k = grid_points[2]-1;
   zeta = 1.0;
-  #pragma acc kernels present_or_create(temp) present(u) \
-    present_or_copyin(grid_points)
+  #pragma acc kernels present(u,grid_points) \
+    present_or_create(temp)
   for (i = 0; i < grid_points[0]; i++) {
     xi = (double)i * dnxm1;
     for (j = 0; j < grid_points[1]; j++) {
       eta = (double)j * dnym1;
-      exact_solution(xi, eta, zeta, temp);
+      EXACT_SOLUTION(m, xi, eta, zeta, temp);
       for (m = 0; m < 5; m++) {
 	u[i][j][k][m] = temp[m];
       }
@@ -862,7 +835,7 @@ static void lhsinit(void) {
 /*--------------------------------------------------------------------
 c     zero the whole left hand side for starters
 c-------------------------------------------------------------------*/
-  #pragma acc kernels present_or_create(lhs) present_or_copyin(grid_points)
+  #pragma acc kernels present(lhs, grid_points)
   for (i = 0; i < grid_points[0]; i++) {
     for (j = 0; j < grid_points[1]; j++) {
       for (k = 0; k < grid_points[2]; k++) {
@@ -909,8 +882,7 @@ c-------------------------------------------------------------------*/
 /*--------------------------------------------------------------------
 c     determine a (labeled f) and n jacobians
 c-------------------------------------------------------------------*/
-  #pragma acc kernels present_or_create(fjac,njac) \
-    present(u) present_or_copyin(grid_points)
+  #pragma acc kernels present(u,fjac,njac,grid_points)
   for (j = 1; j < grid_points[1]-1; j++) {
     for (k = 1; k < grid_points[2]-1; k++) {
       for (i = 0; i < grid_points[0]; i++) {
@@ -1194,8 +1166,7 @@ c-------------------------------------------------------------------*/
 c     Compute the indices for storing the tri-diagonal matrix;
 c     determine a (labeled f) and n jacobians for cell c
 c-------------------------------------------------------------------*/
-  #pragma acc kernels present_or_create(fjac,njac) \
-    present(u) present_or_copyin(grid_points)
+  #pragma acc kernels present_or_create(u,fjac,njac,grid_points)
   for (i = 1; i < grid_points[0]-1; i++) {
     for (j = 0; j < grid_points[1]; j++) {
       for (k = 1; k < grid_points[2]-1; k++) {
@@ -1297,8 +1268,7 @@ c-------------------------------------------------------------------*/
 /*--------------------------------------------------------------------
 c     now joacobians set, so form left hand side in y direction
 c-------------------------------------------------------------------*/
-  #pragma acc kernels present(lhs,rhs,fjac,njac) \
-    present_or_copyin(grid_points)
+  #pragma acc kernels present(lhs,rhs,fjac,njac,grid_points)
   for (i = 1; i < grid_points[0]-1; i++) {
     for (j = 1; j < grid_points[1]-1; j++) {
       for (k = 1; k < grid_points[2]-1; k++) {
@@ -1490,7 +1460,7 @@ c-------------------------------------------------------------------*/
 c     Compute the indices for storing the block-diagonal matrix;
 c     determine c (labeled f) and s jacobians
 c---------------------------------------------------------------------*/
-  #pragma acc kernels present(fjac,njac,u) present_or_copyin(grid_points)
+  #pragma acc kernels present(u,fjac,njac,grid_points)
   for (i = 1; i < grid_points[0]-1; i++) {
     for (j = 1; j < grid_points[1]-1; j++) {
       for (k = 0; k < grid_points[2]; k++) {
@@ -1591,8 +1561,7 @@ c---------------------------------------------------------------------*/
 /*--------------------------------------------------------------------
 c     now jacobians set, so form left hand side in z direction
 c-------------------------------------------------------------------*/
-  #pragma acc kernels present(lhs,rhs,fjac,njac,u) \
-    present_or_copyin(grid_points)
+  #pragma acc kernels present(lhs,rhs,fjac,njac,u,grid_points)
   for (i = 1; i < grid_points[0]-1; i++) {
     for (j = 1; j < grid_points[1]-1; j++) {
       for (k = 1; k < grid_points[2]-1; k++) {
@@ -1777,8 +1746,7 @@ static void compute_rhs(void) {
 c     compute the reciprocal of density, and the kinetic energy, 
 c     and the speed of sound.
 c-------------------------------------------------------------------*/
-  #pragma acc kernels present_or_create(us,vs,ws,qs,square) \
-    present_or_copyin(grid_points) present(u)
+  #pragma acc kernels present(u,us,vs,ws,qs,square,rho_i,grid_points)
   for (i = 0; i < grid_points[0]; i++) {
     for (j = 0; j < grid_points[1]; j++) {
       for (k = 0; k < grid_points[2]; k++) {
@@ -1801,7 +1769,7 @@ c this forcing term is known, we can store it on the whole grid
 c including the boundary                   
 c-------------------------------------------------------------------*/
 
-  #pragma acc kernels present_or_create(rhs) present(forcing)
+  #pragma acc kernels present(rhs,forcing,grid_points)
   for (i = 0; i < grid_points[0]; i++) {
     for (j = 0; j < grid_points[1]; j++) {
       for (k = 0; k < grid_points[2]; k++) {
@@ -1815,8 +1783,7 @@ c-------------------------------------------------------------------*/
 /*--------------------------------------------------------------------
 c     compute xi-direction fluxes 
 c-------------------------------------------------------------------*/
-  #pragma acc kernels present(us,vs,ws,qs,square,rhs,u) \
-    present_or_copyin(grid_points)
+  #pragma acc kernels present(us,vs,ws,qs,square,rhs,u,grid_points)
   for (i = 1; i < grid_points[0]-1; i++) {
     for (j = 1; j < grid_points[1]-1; j++) {
       for (k = 1; k < grid_points[2]-1; k++) {
@@ -1877,7 +1844,7 @@ c-------------------------------------------------------------------*/
 c     add fourth order xi-direction dissipation               
 c-------------------------------------------------------------------*/
   i = 1;
-  #pragma acc kernels present(rhs,u) present_or_copyin(grid_points)
+  #pragma acc kernels present(rhs,u,grid_points)
   for (j = 1; j < grid_points[1]-1; j++) {
     for (k = 1; k < grid_points[2]-1; k++) {
       for (m = 0; m < 5; m++) {
@@ -1889,7 +1856,7 @@ c-------------------------------------------------------------------*/
   }
 
   i = 2;
-  #pragma acc kernels present(rhs,u) present_or_copyin(grid_points)
+  #pragma acc kernels present(rhs,u,grid_points)
   for (j = 1; j < grid_points[1]-1; j++) {
     for (k = 1; k < grid_points[2]-1; k++) {
       for (m = 0; m < 5; m++) {
@@ -1900,7 +1867,7 @@ c-------------------------------------------------------------------*/
     }
   }
 
-  #pragma acc kernels present(rhs,u) present_or_copyin(grid_points)
+  #pragma acc kernels present(rhs,u,grid_points)
   for (i = 3; i < grid_points[0]-3; i++) {
     for (j = 1; j < grid_points[1]-1; j++) {
       for (k = 1; k < grid_points[2]-1; k++) {
@@ -1915,7 +1882,7 @@ c-------------------------------------------------------------------*/
   }
          
   i = grid_points[0]-3;
-  #pragma acc kernels present(rhs,u) present_or_copyin(grid_points)
+  #pragma acc kernels present(rhs,u,grid_points)
   for (j = 1; j < grid_points[1]-1; j++) {
     for (k = 1; k < grid_points[2]-1; k++) {
       for (m = 0; m < 5; m++) {
@@ -1927,7 +1894,7 @@ c-------------------------------------------------------------------*/
   }
 
   i = grid_points[0]-2;
-  #pragma acc kernels present(rhs,u) present_or_copyin(grid_points)
+  #pragma acc kernels present(rhs,u,grid_points)
   for (j = 1; j < grid_points[1]-1; j++) {
     for (k = 1; k < grid_points[2]-1; k++) {
       for (m = 0; m < 5; m++) {
@@ -1941,7 +1908,7 @@ c-------------------------------------------------------------------*/
 /*--------------------------------------------------------------------
 c     compute eta-direction fluxes 
 c-------------------------------------------------------------------*/
-  #pragma acc kernels present(us,vs,ws,square,rhs,u) present_or_copyin(grid_points)
+  #pragma acc kernels present(us,vs,ws,square,rhs,u,grid_points)
   for (i = 1; i < grid_points[0]-1; i++) {
     for (j = 1; j < grid_points[1]-1; j++) {
       for (k = 1; k < grid_points[2]-1; k++) {
@@ -1997,7 +1964,7 @@ c-------------------------------------------------------------------*/
 c     add fourth order eta-direction dissipation         
 c-------------------------------------------------------------------*/
   j = 1;
-  #pragma acc kernels present(rhs,u) present_or_copyin(grid_points)
+  #pragma acc kernels present(rhs,u,grid_points)
   for (i = 1; i < grid_points[0]-1; i++) {
     for (k = 1; k < grid_points[2]-1; k++) {
       for (m = 0; m < 5; m++) {
@@ -2009,7 +1976,7 @@ c-------------------------------------------------------------------*/
   }
 
   j = 2;
-  #pragma acc kernels present(rhs,u) present_or_copyin(grid_points)
+  #pragma acc kernels present(rhs,u,grid_points)
   for (i = 1; i < grid_points[0]-1; i++) {
     for (k = 1; k < grid_points[2]-1; k++) {
       for (m = 0; m < 5; m++) {
@@ -2020,7 +1987,7 @@ c-------------------------------------------------------------------*/
     }
   }
 
-  #pragma acc kernels present(rhs,u) present_or_copyin(grid_points)
+  #pragma acc kernels present(rhs,u,grid_points)
   for (i = 1; i < grid_points[0]-1; i++) {
     for (j = 3; j < grid_points[1]-3; j++) {
       for (k = 1; k < grid_points[2]-1; k++) {
@@ -2035,7 +2002,7 @@ c-------------------------------------------------------------------*/
   }
          
   j = grid_points[1]-3;
-  #pragma acc kernels present(rhs,u) present_or_copyin(grid_points)
+  #pragma acc kernels present(rhs,u,grid_points)
   for (i = 1; i < grid_points[0]-1; i++) {
     for (k = 1; k < grid_points[2]-1; k++) {
       for (m = 0; m < 5; m++) {
@@ -2047,7 +2014,7 @@ c-------------------------------------------------------------------*/
   }
 
   j = grid_points[1]-2;
-  #pragma acc kernels present(rhs,u) present_or_copyin(grid_points)
+  #pragma acc kernels present(rhs,u,grid_points)
   for (i = 1; i < grid_points[0]-1; i++) {
     for (k = 1; k < grid_points[2]-1; k++) {
       for (m = 0; m < 5; m++) {
@@ -2061,7 +2028,7 @@ c-------------------------------------------------------------------*/
 /*--------------------------------------------------------------------
 c     compute zeta-direction fluxes 
 c-------------------------------------------------------------------*/
-  #pragma acc kernels present(us,vs,ws,square,rhs,u) present_or_copyin(grid_points)
+  #pragma acc kernels present(us,vs,ws,square,rhs,u,grid_points)
   for (i = 1; i < grid_points[0]-1; i++) {
     for (j = 1; j < grid_points[1]-1; j++) {
       for (k = 1; k < grid_points[2]-1; k++) {
@@ -2118,7 +2085,7 @@ c-------------------------------------------------------------------*/
 c     add fourth order zeta-direction dissipation                
 c-------------------------------------------------------------------*/
   k = 1;
-  #pragma acc kernels present(rhs,u) present_or_copyin(grid_points)
+  #pragma acc kernels present(rhs,u,grid_points)
   for (i = 1; i < grid_points[0]-1; i++) {
     for (j = 1; j < grid_points[1]-1; j++) {
       for (m = 0; m < 5; m++) {
@@ -2130,7 +2097,7 @@ c-------------------------------------------------------------------*/
   }
 
   k = 2;
-  #pragma acc kernels present(rhs,u) present_or_copyin(grid_points)
+  #pragma acc kernels present(rhs,u,grid_points)
   for (i = 1; i < grid_points[0]-1; i++) {
     for (j = 1; j < grid_points[1]-1; j++) {
       for (m = 0; m < 5; m++) {
@@ -2141,7 +2108,7 @@ c-------------------------------------------------------------------*/
     }
   }
 
-  #pragma acc kernels present(rhs,u) present_or_copyin(grid_points)
+  #pragma acc kernels present(rhs,u,grid_points)
   for (i = 1; i < grid_points[0]-1; i++) {
     for (j = 1; j < grid_points[1]-1; j++) {
       for (k = 3; k < grid_points[2]-3; k++) {
@@ -2156,7 +2123,7 @@ c-------------------------------------------------------------------*/
   }
          
   k = grid_points[2]-3;
-  #pragma acc kernels present(rhs,u) present_or_copyin(grid_points)
+  #pragma acc kernels present(rhs,u,grid_points)
   for (i = 1; i < grid_points[0]-1; i++) {
     for (j = 1; j < grid_points[1]-1; j++) {
       for (m = 0; m < 5; m++) {
@@ -2168,7 +2135,7 @@ c-------------------------------------------------------------------*/
   }
 
   k = grid_points[2]-2;
-  #pragma acc kernels present(rhs,u) present_or_copyin(grid_points)
+  #pragma acc kernels present(rhs,u,grid_points)
   for (i = 1; i < grid_points[0]-1; i++) {
     for (j = 1; j < grid_points[1]-1; j++) {
       for (m = 0; m < 5; m++) {
@@ -2179,7 +2146,7 @@ c-------------------------------------------------------------------*/
     }
   }
 
-  #pragma acc kernels present(rhs,u) present_or_copyin(grid_points)
+  #pragma acc kernels present(rhs,u,grid_points)
   for (j = 1; j < grid_points[1]-1; j++) {
     for (k = 1; k < grid_points[2]-1; k++) {
       for (m = 0; m < 5; m++) {
@@ -2702,7 +2669,7 @@ c-------------------------------------------------------------------*/
   int i, j, k, m, n;
 
   for (i = grid_points[0]-2; i >= 0; i--) {
-    #pragma acc kernels present(lhs,rhs) present_or_copyin(grid_points)
+    #pragma acc kernels present(lhs,rhs,grid_points)
     for (j = 1; j < grid_points[1]-1; j++) {
       for (k = 1; k < grid_points[2]-1; k++) {
 	for (m = 0; m < BLOCK_SIZE; m++) {
@@ -2738,7 +2705,7 @@ c-------------------------------------------------------------------*/
 /*--------------------------------------------------------------------
 c     outer most do loops - sweeping in i direction
 c-------------------------------------------------------------------*/
-  #pragma acc kernels present(lhs,rhs) present_or_copyin(grid_points)
+  #pragma acc kernels present(lhs,rhs,grid_points)
   for (j = 1; j < grid_points[1]-1; j++) {
     for (k = 1; k < grid_points[2]-1; k++) {
 
@@ -2746,7 +2713,7 @@ c-------------------------------------------------------------------*/
 c     multiply c(0,j,k) by b_inverse and copy back to c
 c     multiply rhs(0) by b_inverse(0) and copy to rhs
 c-------------------------------------------------------------------*/
-      binvcrhs( lhs[0][j][k][BB],
+      BINVCRHS( lhs[0][j][k][BB],
 		lhs[0][j][k][CC],
 		rhs[0][j][k] );
     }
@@ -2757,7 +2724,7 @@ c     begin inner most do loop
 c     do all the elements of the cell unless last 
 c-------------------------------------------------------------------*/
   for (i = 1; i < isize; i++) {
-    #pragma acc kernels present(lhs,rhs) present_or_copyin(grid_points)
+    #pragma acc kernels present(lhs,rhs,grid_points)
     for (j = 1; j < grid_points[1]-1; j++) {
       for (k = 1; k < grid_points[2]-1; k++) {
 
@@ -2770,7 +2737,7 @@ c-------------------------------------------------------------------*/
 /*--------------------------------------------------------------------
 c     B(i) = B(i) - C(i-1)*A(i)
 c-------------------------------------------------------------------*/
-	matmul_sub(lhs[i][j][k][AA],
+    MATMUL_SUB(lhs[i][j][k][AA],
 		   lhs[i-1][j][k][CC],
 		   lhs[i][j][k][BB]);
 
@@ -2779,7 +2746,7 @@ c-------------------------------------------------------------------*/
 c     multiply c(i,j,k) by b_inverse and copy back to c
 c     multiply rhs(1,j,k) by b_inverse(1,j,k) and copy to rhs
 c-------------------------------------------------------------------*/
-	binvcrhs( lhs[i][j][k][BB],
+    BINVCRHS( lhs[i][j][k][BB],
 		  lhs[i][j][k][CC],
 		  rhs[i][j][k] );
 
@@ -2794,13 +2761,13 @@ c-------------------------------------------------------------------*/
 /*--------------------------------------------------------------------
 c     rhs(isize) = rhs(isize) - A*rhs(isize-1)
 c-------------------------------------------------------------------*/
-      matvec_sub(lhs[isize][j][k][AA],
+      MATVEC_SUB(lhs[isize][j][k][AA],
 		 rhs[isize-1][j][k], rhs[isize][j][k]);
 
 /*--------------------------------------------------------------------
 c     B(isize) = B(isize) - C(isize-1)*A(isize)
 c-------------------------------------------------------------------*/
-      matmul_sub(lhs[isize][j][k][AA],
+      MATMUL_SUB(lhs[isize][j][k][AA],
 		 lhs[isize-1][j][k][CC],
 		 lhs[isize][j][k][BB]);
 
@@ -2812,491 +2779,6 @@ c-------------------------------------------------------------------*/
 
     }
   }
-}
-
-/*--------------------------------------------------------------------
---------------------------------------------------------------------*/
-
-static void matvec_sub(double ablock[5][5], double avec[5], double bvec[5]) {
-
-/*--------------------------------------------------------------------
---------------------------------------------------------------------*/
-
-/*--------------------------------------------------------------------
-c     subtracts bvec=bvec - ablock*avec
-c-------------------------------------------------------------------*/
-
-  int i;
-
-  for (i = 0; i < 5; i++) {
-/*--------------------------------------------------------------------
-c            rhs(i,ic,jc,kc,ccell) = rhs(i,ic,jc,kc,ccell) 
-c     $           - lhs[i,1,ablock,ia,ja,ka,acell)*
-c-------------------------------------------------------------------*/
-    bvec[i] = bvec[i] - ablock[i][0]*avec[0]
-      - ablock[i][1]*avec[1]
-      - ablock[i][2]*avec[2]
-      - ablock[i][3]*avec[3]
-      - ablock[i][4]*avec[4];
-  }
-}
-
-/*--------------------------------------------------------------------
---------------------------------------------------------------------*/
-
-static void matmul_sub(double ablock[5][5], double bblock[5][5],
-		       double cblock[5][5]) {
-
-/*--------------------------------------------------------------------
---------------------------------------------------------------------*/
-
-/*--------------------------------------------------------------------
-c     subtracts a(i,j,k) X b(i,j,k) from c(i,j,k)
-c-------------------------------------------------------------------*/
-
-  int j;
-
-  for (j = 0; j < 5; j++) {
-    cblock[0][j] = cblock[0][j] - ablock[0][0]*bblock[0][j]
-      - ablock[0][1]*bblock[1][j]
-      - ablock[0][2]*bblock[2][j]
-      - ablock[0][3]*bblock[3][j]
-      - ablock[0][4]*bblock[4][j];
-    cblock[1][j] = cblock[1][j] - ablock[1][0]*bblock[0][j]
-      - ablock[1][1]*bblock[1][j]
-      - ablock[1][2]*bblock[2][j]
-      - ablock[1][3]*bblock[3][j]
-      - ablock[1][4]*bblock[4][j];
-    cblock[2][j] = cblock[2][j] - ablock[2][0]*bblock[0][j]
-      - ablock[2][1]*bblock[1][j]
-      - ablock[2][2]*bblock[2][j]
-      - ablock[2][3]*bblock[3][j]
-      - ablock[2][4]*bblock[4][j];
-    cblock[3][j] = cblock[3][j] - ablock[3][0]*bblock[0][j]
-      - ablock[3][1]*bblock[1][j]
-      - ablock[3][2]*bblock[2][j]
-      - ablock[3][3]*bblock[3][j]
-      - ablock[3][4]*bblock[4][j];
-    cblock[4][j] = cblock[4][j] - ablock[4][0]*bblock[0][j]
-      - ablock[4][1]*bblock[1][j]
-      - ablock[4][2]*bblock[2][j]
-      - ablock[4][3]*bblock[3][j]
-      - ablock[4][4]*bblock[4][j];
-  }
-}
-
-/*--------------------------------------------------------------------
---------------------------------------------------------------------*/
-
-static void binvcrhs(double lhs[5][5], double c[5][5], double r[5]) {
-
-/*--------------------------------------------------------------------
---------------------------------------------------------------------*/
-
-  double pivot, coeff;
-
-/*--------------------------------------------------------------------
-c     
-c-------------------------------------------------------------------*/
-
-  pivot = 1.00/lhs[0][0];
-  lhs[0][1] = lhs[0][1]*pivot;
-  lhs[0][2] = lhs[0][2]*pivot;
-  lhs[0][3] = lhs[0][3]*pivot;
-  lhs[0][4] = lhs[0][4]*pivot;
-  c[0][0] = c[0][0]*pivot;
-  c[0][1] = c[0][1]*pivot;
-  c[0][2] = c[0][2]*pivot;
-  c[0][3] = c[0][3]*pivot;
-  c[0][4] = c[0][4]*pivot;
-  r[0]   = r[0]  *pivot;
-
-  coeff = lhs[1][0];
-  lhs[1][1]= lhs[1][1] - coeff*lhs[0][1];
-  lhs[1][2]= lhs[1][2] - coeff*lhs[0][2];
-  lhs[1][3]= lhs[1][3] - coeff*lhs[0][3];
-  lhs[1][4]= lhs[1][4] - coeff*lhs[0][4];
-  c[1][0] = c[1][0] - coeff*c[0][0];
-  c[1][1] = c[1][1] - coeff*c[0][1];
-  c[1][2] = c[1][2] - coeff*c[0][2];
-  c[1][3] = c[1][3] - coeff*c[0][3];
-  c[1][4] = c[1][4] - coeff*c[0][4];
-  r[1]   = r[1]   - coeff*r[0];
-
-  coeff = lhs[2][0];
-  lhs[2][1]= lhs[2][1] - coeff*lhs[0][1];
-  lhs[2][2]= lhs[2][2] - coeff*lhs[0][2];
-  lhs[2][3]= lhs[2][3] - coeff*lhs[0][3];
-  lhs[2][4]= lhs[2][4] - coeff*lhs[0][4];
-  c[2][0] = c[2][0] - coeff*c[0][0];
-  c[2][1] = c[2][1] - coeff*c[0][1];
-  c[2][2] = c[2][2] - coeff*c[0][2];
-  c[2][3] = c[2][3] - coeff*c[0][3];
-  c[2][4] = c[2][4] - coeff*c[0][4];
-  r[2]   = r[2]   - coeff*r[0];
-
-  coeff = lhs[3][0];
-  lhs[3][1]= lhs[3][1] - coeff*lhs[0][1];
-  lhs[3][2]= lhs[3][2] - coeff*lhs[0][2];
-  lhs[3][3]= lhs[3][3] - coeff*lhs[0][3];
-  lhs[3][4]= lhs[3][4] - coeff*lhs[0][4];
-  c[3][0] = c[3][0] - coeff*c[0][0];
-  c[3][1] = c[3][1] - coeff*c[0][1];
-  c[3][2] = c[3][2] - coeff*c[0][2];
-  c[3][3] = c[3][3] - coeff*c[0][3];
-  c[3][4] = c[3][4] - coeff*c[0][4];
-  r[3]   = r[3]   - coeff*r[0];
-
-  coeff = lhs[4][0];
-  lhs[4][1]= lhs[4][1] - coeff*lhs[0][1];
-  lhs[4][2]= lhs[4][2] - coeff*lhs[0][2];
-  lhs[4][3]= lhs[4][3] - coeff*lhs[0][3];
-  lhs[4][4]= lhs[4][4] - coeff*lhs[0][4];
-  c[4][0] = c[4][0] - coeff*c[0][0];
-  c[4][1] = c[4][1] - coeff*c[0][1];
-  c[4][2] = c[4][2] - coeff*c[0][2];
-  c[4][3] = c[4][3] - coeff*c[0][3];
-  c[4][4] = c[4][4] - coeff*c[0][4];
-  r[4]   = r[4]   - coeff*r[0];
-
-
-  pivot = 1.00/lhs[1][1];
-  lhs[1][2] = lhs[1][2]*pivot;
-  lhs[1][3] = lhs[1][3]*pivot;
-  lhs[1][4] = lhs[1][4]*pivot;
-  c[1][0] = c[1][0]*pivot;
-  c[1][1] = c[1][1]*pivot;
-  c[1][2] = c[1][2]*pivot;
-  c[1][3] = c[1][3]*pivot;
-  c[1][4] = c[1][4]*pivot;
-  r[1]   = r[1]  *pivot;
-
-  coeff = lhs[0][1];
-  lhs[0][2]= lhs[0][2] - coeff*lhs[1][2];
-  lhs[0][3]= lhs[0][3] - coeff*lhs[1][3];
-  lhs[0][4]= lhs[0][4] - coeff*lhs[1][4];
-  c[0][0] = c[0][0] - coeff*c[1][0];
-  c[0][1] = c[0][1] - coeff*c[1][1];
-  c[0][2] = c[0][2] - coeff*c[1][2];
-  c[0][3] = c[0][3] - coeff*c[1][3];
-  c[0][4] = c[0][4] - coeff*c[1][4];
-  r[0]   = r[0]   - coeff*r[1];
-
-  coeff = lhs[2][1];
-  lhs[2][2]= lhs[2][2] - coeff*lhs[1][2];
-  lhs[2][3]= lhs[2][3] - coeff*lhs[1][3];
-  lhs[2][4]= lhs[2][4] - coeff*lhs[1][4];
-  c[2][0] = c[2][0] - coeff*c[1][0];
-  c[2][1] = c[2][1] - coeff*c[1][1];
-  c[2][2] = c[2][2] - coeff*c[1][2];
-  c[2][3] = c[2][3] - coeff*c[1][3];
-  c[2][4] = c[2][4] - coeff*c[1][4];
-  r[2]   = r[2]   - coeff*r[1];
-
-  coeff = lhs[3][1];
-  lhs[3][2]= lhs[3][2] - coeff*lhs[1][2];
-  lhs[3][3]= lhs[3][3] - coeff*lhs[1][3];
-  lhs[3][4]= lhs[3][4] - coeff*lhs[1][4];
-  c[3][0] = c[3][0] - coeff*c[1][0];
-  c[3][1] = c[3][1] - coeff*c[1][1];
-  c[3][2] = c[3][2] - coeff*c[1][2];
-  c[3][3] = c[3][3] - coeff*c[1][3];
-  c[3][4] = c[3][4] - coeff*c[1][4];
-  r[3]   = r[3]   - coeff*r[1];
-
-  coeff = lhs[4][1];
-  lhs[4][2]= lhs[4][2] - coeff*lhs[1][2];
-  lhs[4][3]= lhs[4][3] - coeff*lhs[1][3];
-  lhs[4][4]= lhs[4][4] - coeff*lhs[1][4];
-  c[4][0] = c[4][0] - coeff*c[1][0];
-  c[4][1] = c[4][1] - coeff*c[1][1];
-  c[4][2] = c[4][2] - coeff*c[1][2];
-  c[4][3] = c[4][3] - coeff*c[1][3];
-  c[4][4] = c[4][4] - coeff*c[1][4];
-  r[4]   = r[4]   - coeff*r[1];
-
-
-  pivot = 1.00/lhs[2][2];
-  lhs[2][3] = lhs[2][3]*pivot;
-  lhs[2][4] = lhs[2][4]*pivot;
-  c[2][0] = c[2][0]*pivot;
-  c[2][1] = c[2][1]*pivot;
-  c[2][2] = c[2][2]*pivot;
-  c[2][3] = c[2][3]*pivot;
-  c[2][4] = c[2][4]*pivot;
-  r[2]   = r[2]  *pivot;
-
-  coeff = lhs[0][2];
-  lhs[0][3]= lhs[0][3] - coeff*lhs[2][3];
-  lhs[0][4]= lhs[0][4] - coeff*lhs[2][4];
-  c[0][0] = c[0][0] - coeff*c[2][0];
-  c[0][1] = c[0][1] - coeff*c[2][1];
-  c[0][2] = c[0][2] - coeff*c[2][2];
-  c[0][3] = c[0][3] - coeff*c[2][3];
-  c[0][4] = c[0][4] - coeff*c[2][4];
-  r[0]   = r[0]   - coeff*r[2];
-
-  coeff = lhs[1][2];
-  lhs[1][3]= lhs[1][3] - coeff*lhs[2][3];
-  lhs[1][4]= lhs[1][4] - coeff*lhs[2][4];
-  c[1][0] = c[1][0] - coeff*c[2][0];
-  c[1][1] = c[1][1] - coeff*c[2][1];
-  c[1][2] = c[1][2] - coeff*c[2][2];
-  c[1][3] = c[1][3] - coeff*c[2][3];
-  c[1][4] = c[1][4] - coeff*c[2][4];
-  r[1]   = r[1]   - coeff*r[2];
-
-  coeff = lhs[3][2];
-  lhs[3][3]= lhs[3][3] - coeff*lhs[2][3];
-  lhs[3][4]= lhs[3][4] - coeff*lhs[2][4];
-  c[3][0] = c[3][0] - coeff*c[2][0];
-  c[3][1] = c[3][1] - coeff*c[2][1];
-  c[3][2] = c[3][2] - coeff*c[2][2];
-  c[3][3] = c[3][3] - coeff*c[2][3];
-  c[3][4] = c[3][4] - coeff*c[2][4];
-  r[3]   = r[3]   - coeff*r[2];
-
-  coeff = lhs[4][2];
-  lhs[4][3]= lhs[4][3] - coeff*lhs[2][3];
-  lhs[4][4]= lhs[4][4] - coeff*lhs[2][4];
-  c[4][0] = c[4][0] - coeff*c[2][0];
-  c[4][1] = c[4][1] - coeff*c[2][1];
-  c[4][2] = c[4][2] - coeff*c[2][2];
-  c[4][3] = c[4][3] - coeff*c[2][3];
-  c[4][4] = c[4][4] - coeff*c[2][4];
-  r[4]   = r[4]   - coeff*r[2];
-
-
-  pivot = 1.00/lhs[3][3];
-  lhs[3][4] = lhs[3][4]*pivot;
-  c[3][0] = c[3][0]*pivot;
-  c[3][1] = c[3][1]*pivot;
-  c[3][2] = c[3][2]*pivot;
-  c[3][3] = c[3][3]*pivot;
-  c[3][4] = c[3][4]*pivot;
-  r[3]   = r[3]  *pivot;
-
-  coeff = lhs[0][3];
-  lhs[0][4]= lhs[0][4] - coeff*lhs[3][4];
-  c[0][0] = c[0][0] - coeff*c[3][0];
-  c[0][1] = c[0][1] - coeff*c[3][1];
-  c[0][2] = c[0][2] - coeff*c[3][2];
-  c[0][3] = c[0][3] - coeff*c[3][3];
-  c[0][4] = c[0][4] - coeff*c[3][4];
-  r[0]   = r[0]   - coeff*r[3];
-
-  coeff = lhs[1][3];
-  lhs[1][4]= lhs[1][4] - coeff*lhs[3][4];
-  c[1][0] = c[1][0] - coeff*c[3][0];
-  c[1][1] = c[1][1] - coeff*c[3][1];
-  c[1][2] = c[1][2] - coeff*c[3][2];
-  c[1][3] = c[1][3] - coeff*c[3][3];
-  c[1][4] = c[1][4] - coeff*c[3][4];
-  r[1]   = r[1]   - coeff*r[3];
-
-  coeff = lhs[2][3];
-  lhs[2][4]= lhs[2][4] - coeff*lhs[3][4];
-  c[2][0] = c[2][0] - coeff*c[3][0];
-  c[2][1] = c[2][1] - coeff*c[3][1];
-  c[2][2] = c[2][2] - coeff*c[3][2];
-  c[2][3] = c[2][3] - coeff*c[3][3];
-  c[2][4] = c[2][4] - coeff*c[3][4];
-  r[2]   = r[2]   - coeff*r[3];
-
-  coeff = lhs[4][3];
-  lhs[4][4]= lhs[4][4] - coeff*lhs[3][4];
-  c[4][0] = c[4][0] - coeff*c[3][0];
-  c[4][1] = c[4][1] - coeff*c[3][1];
-  c[4][2] = c[4][2] - coeff*c[3][2];
-  c[4][3] = c[4][3] - coeff*c[3][3];
-  c[4][4] = c[4][4] - coeff*c[3][4];
-  r[4]   = r[4]   - coeff*r[3];
-
-
-  pivot = 1.00/lhs[4][4];
-  c[4][0] = c[4][0]*pivot;
-  c[4][1] = c[4][1]*pivot;
-  c[4][2] = c[4][2]*pivot;
-  c[4][3] = c[4][3]*pivot;
-  c[4][4] = c[4][4]*pivot;
-  r[4]   = r[4]  *pivot;
-
-  coeff = lhs[0][4];
-  c[0][0] = c[0][0] - coeff*c[4][0];
-  c[0][1] = c[0][1] - coeff*c[4][1];
-  c[0][2] = c[0][2] - coeff*c[4][2];
-  c[0][3] = c[0][3] - coeff*c[4][3];
-  c[0][4] = c[0][4] - coeff*c[4][4];
-  r[0]   = r[0]   - coeff*r[4];
-
-  coeff = lhs[1][4];
-  c[1][0] = c[1][0] - coeff*c[4][0];
-  c[1][1] = c[1][1] - coeff*c[4][1];
-  c[1][2] = c[1][2] - coeff*c[4][2];
-  c[1][3] = c[1][3] - coeff*c[4][3];
-  c[1][4] = c[1][4] - coeff*c[4][4];
-  r[1]   = r[1]   - coeff*r[4];
-
-  coeff = lhs[2][4];
-  c[2][0] = c[2][0] - coeff*c[4][0];
-  c[2][1] = c[2][1] - coeff*c[4][1];
-  c[2][2] = c[2][2] - coeff*c[4][2];
-  c[2][3] = c[2][3] - coeff*c[4][3];
-  c[2][4] = c[2][4] - coeff*c[4][4];
-  r[2]   = r[2]   - coeff*r[4];
-
-  coeff = lhs[3][4];
-  c[3][0] = c[3][0] - coeff*c[4][0];
-  c[3][1] = c[3][1] - coeff*c[4][1];
-  c[3][2] = c[3][2] - coeff*c[4][2];
-  c[3][3] = c[3][3] - coeff*c[4][3];
-  c[3][4] = c[3][4] - coeff*c[4][4];
-  r[3]   = r[3]   - coeff*r[4];
-}
-
-/*--------------------------------------------------------------------
---------------------------------------------------------------------*/
-
-static void binvrhs( double lhs[5][5], double r[5] ) {
-
-/*--------------------------------------------------------------------
---------------------------------------------------------------------*/
-
-  double pivot, coeff;
-
-/*--------------------------------------------------------------------
-c     
-c-------------------------------------------------------------------*/
-
-  pivot = 1.00/lhs[0][0];
-  lhs[0][1] = lhs[0][1]*pivot;
-  lhs[0][2] = lhs[0][2]*pivot;
-  lhs[0][3] = lhs[0][3]*pivot;
-  lhs[0][4] = lhs[0][4]*pivot;
-  r[0]   = r[0]  *pivot;
-
-  coeff = lhs[1][0];
-  lhs[1][1]= lhs[1][1] - coeff*lhs[0][1];
-  lhs[1][2]= lhs[1][2] - coeff*lhs[0][2];
-  lhs[1][3]= lhs[1][3] - coeff*lhs[0][3];
-  lhs[1][4]= lhs[1][4] - coeff*lhs[0][4];
-  r[1]   = r[1]   - coeff*r[0];
-
-  coeff = lhs[2][0];
-  lhs[2][1]= lhs[2][1] - coeff*lhs[0][1];
-  lhs[2][2]= lhs[2][2] - coeff*lhs[0][2];
-  lhs[2][3]= lhs[2][3] - coeff*lhs[0][3];
-  lhs[2][4]= lhs[2][4] - coeff*lhs[0][4];
-  r[2]   = r[2]   - coeff*r[0];
-
-  coeff = lhs[3][0];
-  lhs[3][1]= lhs[3][1] - coeff*lhs[0][1];
-  lhs[3][2]= lhs[3][2] - coeff*lhs[0][2];
-  lhs[3][3]= lhs[3][3] - coeff*lhs[0][3];
-  lhs[3][4]= lhs[3][4] - coeff*lhs[0][4];
-  r[3]   = r[3]   - coeff*r[0];
-
-  coeff = lhs[4][0];
-  lhs[4][1]= lhs[4][1] - coeff*lhs[0][1];
-  lhs[4][2]= lhs[4][2] - coeff*lhs[0][2];
-  lhs[4][3]= lhs[4][3] - coeff*lhs[0][3];
-  lhs[4][4]= lhs[4][4] - coeff*lhs[0][4];
-  r[4]   = r[4]   - coeff*r[0];
-
-
-  pivot = 1.00/lhs[1][1];
-  lhs[1][2] = lhs[1][2]*pivot;
-  lhs[1][3] = lhs[1][3]*pivot;
-  lhs[1][4] = lhs[1][4]*pivot;
-  r[1]   = r[1]  *pivot;
-
-  coeff = lhs[0][1];
-  lhs[0][2]= lhs[0][2] - coeff*lhs[1][2];
-  lhs[0][3]= lhs[0][3] - coeff*lhs[1][3];
-  lhs[0][4]= lhs[0][4] - coeff*lhs[1][4];
-  r[0]   = r[0]   - coeff*r[1];
-
-  coeff = lhs[2][1];
-  lhs[2][2]= lhs[2][2] - coeff*lhs[1][2];
-  lhs[2][3]= lhs[2][3] - coeff*lhs[1][3];
-  lhs[2][4]= lhs[2][4] - coeff*lhs[1][4];
-  r[2]   = r[2]   - coeff*r[1];
-
-  coeff = lhs[3][1];
-  lhs[3][2]= lhs[3][2] - coeff*lhs[1][2];
-  lhs[3][3]= lhs[3][3] - coeff*lhs[1][3];
-  lhs[3][4]= lhs[3][4] - coeff*lhs[1][4];
-  r[3]   = r[3]   - coeff*r[1];
-
-  coeff = lhs[4][1];
-  lhs[4][2]= lhs[4][2] - coeff*lhs[1][2];
-  lhs[4][3]= lhs[4][3] - coeff*lhs[1][3];
-  lhs[4][4]= lhs[4][4] - coeff*lhs[1][4];
-  r[4]   = r[4]   - coeff*r[1];
-
-
-  pivot = 1.00/lhs[2][2];
-  lhs[2][3] = lhs[2][3]*pivot;
-  lhs[2][4] = lhs[2][4]*pivot;
-  r[2]   = r[2]  *pivot;
-
-  coeff = lhs[0][2];
-  lhs[0][3]= lhs[0][3] - coeff*lhs[2][3];
-  lhs[0][4]= lhs[0][4] - coeff*lhs[2][4];
-  r[0]   = r[0]   - coeff*r[2];
-
-  coeff = lhs[1][2];
-  lhs[1][3]= lhs[1][3] - coeff*lhs[2][3];
-  lhs[1][4]= lhs[1][4] - coeff*lhs[2][4];
-  r[1]   = r[1]   - coeff*r[2];
-
-  coeff = lhs[3][2];
-  lhs[3][3]= lhs[3][3] - coeff*lhs[2][3];
-  lhs[3][4]= lhs[3][4] - coeff*lhs[2][4];
-  r[3]   = r[3]   - coeff*r[2];
-
-  coeff = lhs[4][2];
-  lhs[4][3]= lhs[4][3] - coeff*lhs[2][3];
-  lhs[4][4]= lhs[4][4] - coeff*lhs[2][4];
-  r[4]   = r[4]   - coeff*r[2];
-
-
-  pivot = 1.00/lhs[3][3];
-  lhs[3][4] = lhs[3][4]*pivot;
-  r[3]   = r[3]  *pivot;
-
-  coeff = lhs[0][3];
-  lhs[0][4]= lhs[0][4] - coeff*lhs[3][4];
-  r[0]   = r[0]   - coeff*r[3];
-
-  coeff = lhs[1][3];
-  lhs[1][4]= lhs[1][4] - coeff*lhs[3][4];
-  r[1]   = r[1]   - coeff*r[3];
-
-  coeff = lhs[2][3];
-  lhs[2][4]= lhs[2][4] - coeff*lhs[3][4];
-  r[2]   = r[2]   - coeff*r[3];
-
-  coeff = lhs[4][3];
-  lhs[4][4]= lhs[4][4] - coeff*lhs[3][4];
-  r[4]   = r[4]   - coeff*r[3];
-
-
-  pivot = 1.00/lhs[4][4];
-  r[4]   = r[4]  *pivot;
-
-  coeff = lhs[0][4];
-  r[0]   = r[0]   - coeff*r[4];
-
-  coeff = lhs[1][4];
-  r[1]   = r[1]   - coeff*r[4];
-
-  coeff = lhs[2][4];
-  r[2]   = r[2]   - coeff*r[4];
-
-  coeff = lhs[3][4];
-  r[3]   = r[3]   - coeff*r[4];
-
 }
 
 /*--------------------------------------------------------------------
@@ -3341,7 +2823,7 @@ c-------------------------------------------------------------------*/
   int i, j, k, m, n;
       
   for (j = grid_points[1]-2; j >= 0; j--) {
-    #pragma acc kernels present(lhs,rhs) present_or_copyin(grid_points)
+    #pragma acc kernels present(lhs,rhs,grid_points)
     for (i = 1; i < grid_points[0]-1; i++) {
       for (k = 1; k < grid_points[2]-1; k++) {
 	for (m = 0; m < BLOCK_SIZE; m++) {
@@ -3377,7 +2859,7 @@ c-------------------------------------------------------------------*/
 
   jsize = grid_points[1]-1;
 
-  #pragma acc kernels present(lhs,rhs) present_or_copy(grid_points)
+  #pragma acc kernels present(lhs,rhs,grid_points)
   for (i = 1; i < grid_points[0]-1; i++) {
     for (k = 1; k < grid_points[2]-1; k++) {
 
@@ -3385,7 +2867,7 @@ c-------------------------------------------------------------------*/
 c     multiply c(i,0,k) by b_inverse and copy back to c
 c     multiply rhs(0) by b_inverse(0) and copy to rhs
 c-------------------------------------------------------------------*/
-      binvcrhs( lhs[i][0][k][BB],
+      BINVCRHS( lhs[i][0][k][BB],
 		lhs[i][0][k][CC],
 		rhs[i][0][k] );
     }
@@ -3396,7 +2878,7 @@ c     begin inner most do loop
 c     do all the elements of the cell unless last 
 c-------------------------------------------------------------------*/
   for (j = 1; j < jsize; j++) {
-    #pragma acc kernels present(lhs,rhs) present_or_copy(grid_points)
+    #pragma acc kernels present(lhs,rhs,grid_points)
     for (i = 1; i < grid_points[0]-1; i++) {
       for (k = 1; k < grid_points[2]-1; k++) {
 
@@ -3405,13 +2887,13 @@ c     subtract A*lhs_vector(j-1) from lhs_vector(j)
 c     
 c     rhs(j) = rhs(j) - A*rhs(j-1)
 c-------------------------------------------------------------------*/
-	matvec_sub(lhs[i][j][k][AA],
+    MATVEC_SUB(lhs[i][j][k][AA],
 		   rhs[i][j-1][k], rhs[i][j][k]);
 
 /*--------------------------------------------------------------------
 c     B(j) = B(j) - C(j-1)*A(j)
 c-------------------------------------------------------------------*/
-	matmul_sub(lhs[i][j][k][AA],
+    MATMUL_SUB(lhs[i][j][k][AA],
 		   lhs[i][j-1][k][CC],
 		   lhs[i][j][k][BB]);
 
@@ -3419,7 +2901,7 @@ c-------------------------------------------------------------------*/
 c     multiply c(i,j,k) by b_inverse and copy back to c
 c     multiply rhs(i,1,k) by b_inverse(i,1,k) and copy to rhs
 c-------------------------------------------------------------------*/
-	binvcrhs( lhs[i][j][k][BB],
+    BINVCRHS( lhs[i][j][k][BB],
 		  lhs[i][j][k][CC],
 		  rhs[i][j][k] );
 
@@ -3427,14 +2909,14 @@ c-------------------------------------------------------------------*/
     }
   }
 
-  #pragma acc kernels present(lhs,rhs) present_or_copy(grid_points)
+  #pragma acc kernels present(lhs,rhs,grid_points)
   for (i = 1; i < grid_points[0]-1; i++) {
     for (k = 1; k < grid_points[2]-1; k++) {
 
 /*--------------------------------------------------------------------
 c     rhs(jsize) = rhs(jsize) - A*rhs(jsize-1)
 c-------------------------------------------------------------------*/
-      matvec_sub(lhs[i][jsize][k][AA],
+      MATVEC_SUB(lhs[i][jsize][k][AA],
 		 rhs[i][jsize-1][k], rhs[i][jsize][k]);
 
 /*--------------------------------------------------------------------
@@ -3442,14 +2924,14 @@ c     B(jsize) = B(jsize) - C(jsize-1)*A(jsize)
 c     call matmul_sub(aa,i,jsize,k,c,
 c     $              cc,i,jsize-1,k,c,BB,i,jsize,k)
 c-------------------------------------------------------------------*/
-      matmul_sub(lhs[i][jsize][k][AA],
+      MATMUL_SUB(lhs[i][jsize][k][AA],
 		 lhs[i][jsize-1][k][CC],
 		 lhs[i][jsize][k][BB]);
 
 /*--------------------------------------------------------------------
 c     multiply rhs(jsize) by b_inverse(jsize) and copy to rhs
 c-------------------------------------------------------------------*/
-      binvrhs( lhs[i][jsize][k][BB],
+      BINVRHS( lhs[i][jsize][k][BB],
 	       rhs[i][jsize][k] );
 
     }
@@ -3537,7 +3019,7 @@ c-------------------------------------------------------------------*/
 /*--------------------------------------------------------------------
 c     outer most do loops - sweeping in i direction
 c-------------------------------------------------------------------*/
-  #pragma acc kernels present(lhs,rhs) present_or_copyin(grid_points)
+  #pragma acc kernels present(lhs,rhs,grid_points)
   for (i = 1; i < grid_points[0]-1; i++) {
     for (j = 1; j < grid_points[1]-1; j++) {
 
@@ -3545,7 +3027,7 @@ c-------------------------------------------------------------------*/
 c     multiply c(i,j,0) by b_inverse and copy back to c
 c     multiply rhs(0) by b_inverse(0) and copy to rhs
 c-------------------------------------------------------------------*/
-      binvcrhs( lhs[i][j][0][BB],
+      BINVCRHS( lhs[i][j][0][BB],
 		lhs[i][j][0][CC],
 		rhs[i][j][0] );
 
@@ -3557,7 +3039,7 @@ c     begin inner most do loop
 c     do all the elements of the cell unless last 
 c-------------------------------------------------------------------*/
   for (k = 1; k < ksize; k++) {
-      #pragma acc kernels present(lhs,rhs) present_or_copyin(grid_points)
+      #pragma acc kernels present(lhs,rhs,grid_points)
       for (i = 1; i < grid_points[0]-1; i++) {
 	  for (j = 1; j < grid_points[1]-1; j++) {
 
@@ -3566,14 +3048,14 @@ c     subtract A*lhs_vector(k-1) from lhs_vector(k)
 c     
 c     rhs(k) = rhs(k) - A*rhs(k-1)
 c-------------------------------------------------------------------*/
-	matvec_sub(lhs[i][j][k][AA],
+    MATVEC_SUB(lhs[i][j][k][AA],
 		   rhs[i][j][k-1], rhs[i][j][k]);
 
 /*--------------------------------------------------------------------
 c     B(k) = B(k) - C(k-1)*A(k)
 c     call matmul_sub(aa,i,j,k,c,cc,i,j,k-1,c,BB,i,j,k)
 c-------------------------------------------------------------------*/
-	matmul_sub(lhs[i][j][k][AA],
+    MATMUL_SUB(lhs[i][j][k][AA],
 		   lhs[i][j][k-1][CC],
 		   lhs[i][j][k][BB]);
 
@@ -3581,7 +3063,7 @@ c-------------------------------------------------------------------*/
 c     multiply c(i,j,k) by b_inverse and copy back to c
 c     multiply rhs(i,j,1) by b_inverse(i,j,1) and copy to rhs
 c-------------------------------------------------------------------*/
-	binvcrhs( lhs[i][j][k][BB],
+    BINVCRHS( lhs[i][j][k][BB],
 		  lhs[i][j][k][CC],
 		  rhs[i][j][k] );
 
@@ -3592,14 +3074,14 @@ c-------------------------------------------------------------------*/
 /*--------------------------------------------------------------------
 c     Now finish up special cases for last cell
 c-------------------------------------------------------------------*/
-  #pragma acc kernels present(lhs,rhs) present_or_copyin(grid_points)
+  #pragma acc kernels present(lhs,rhs,grid_points)
   for (i = 1; i < grid_points[0]-1; i++) {
     for (j = 1; j < grid_points[1]-1; j++) {
 
 /*--------------------------------------------------------------------
 c     rhs(ksize) = rhs(ksize) - A*rhs(ksize-1)
 c-------------------------------------------------------------------*/
-      matvec_sub(lhs[i][j][ksize][AA],
+      MATVEC_SUB(lhs[i][j][ksize][AA],
 		 rhs[i][j][ksize-1], rhs[i][j][ksize]);
 
 /*--------------------------------------------------------------------
@@ -3607,14 +3089,14 @@ c     B(ksize) = B(ksize) - C(ksize-1)*A(ksize)
 c     call matmul_sub(aa,i,j,ksize,c,
 c     $              cc,i,j,ksize-1,c,BB,i,j,ksize)
 c-------------------------------------------------------------------*/
-      matmul_sub(lhs[i][j][ksize][AA],
+      MATMUL_SUB(lhs[i][j][ksize][AA],
 		 lhs[i][j][ksize-1][CC],
 		 lhs[i][j][ksize][BB]);
 
 /*--------------------------------------------------------------------
 c     multiply rhs(ksize) by b_inverse(ksize) and copy to rhs
 c-------------------------------------------------------------------*/
-      binvrhs( lhs[i][j][ksize][BB],
+      BINVRHS( lhs[i][j][ksize][BB],
 	       rhs[i][j][ksize] );
 
     }
