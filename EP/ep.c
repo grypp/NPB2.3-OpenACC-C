@@ -51,6 +51,8 @@
 /* common /storage/ */
 static double x[2*NK];
 static double q[NQ];
+static double qq[NN][NQ];
+
 
 /*--------------------------------------------------------------------
       program EMBAR
@@ -129,26 +131,22 @@ c   sure these initializations cannot be eliminated as dead code.
     sx = 0.0;
     sy = 0.0;
 
+#pragma acc data create(q,qq)
+{
+    k_offset = -1;
+
+    #pragma acc kernels
     for ( i = 0; i <= NQ - 1; i++) {
 	q[i] = 0.0;
     }
-      
-/*
-c   Each instance of this loop may be performed independently. We compute
-c   the k offsets separately to take into account the fact that some nodes
-c   have more numbers to generate than others
-*/
-    k_offset = -1;
 
-#pragma omp parallel copyin(x)
-{
-    double t1, t2, t3, t4, x1, x2;
-    int kk, i, ik, l;
-    double qq[NQ];		/* private copy of q[0:NQ-1] */
+    #pragma acc kernels
+    for (k = 0; k < np; k++) {
+        for (i = 0; i < NQ; i++)
+            qq[k][i] = 0.0;
+    }
 
-    for (i = 0; i < NQ; i++) qq[i] = 0.0;
-
-#pragma acc parallel loop vector reduction(+:sx,sy) copy(qq)
+    #pragma acc parallel loop vector reduction(+:sx,sy)
     for (k = 1; k <= np; k++) {
 	kk = k_offset + k;
 	t1 = S;
@@ -186,7 +184,7 @@ c       vectorizable.
 		t3 = (x1 * t2);				/* Xi */
 		t4 = (x2 * t2);				/* Yi */
 		l = max(fabs(t3), fabs(t4));
-		qq[l] += 1.0;				/* counts */
+        qq[k-1][l] += 1.0;				/* counts */
 		sx = sx + t3;				/* sum of Xi */
 		sy = sy + t4;				/* sum of Yi */
             }
@@ -194,10 +192,13 @@ c       vectorizable.
 	if (TIMERS_ENABLED == TRUE) timer_stop(2);
     }
 
+    #pragma acc kernels loop reduction(+:gc)
     for (i = 0; i <= NQ-1; i++) {
-        q[i] += qq[i];
+        q[i] += qq[np-1][i];
         gc = gc + q[i];
     }
+
+} /* end acc data */
 
     timer_stop(1);
     tm = timer_read(1);
@@ -244,8 +245,7 @@ c       vectorizable.
     }
 	  
     c_print_results("EP", CLASS, M+1, 0, 0, nit,
-		  tm, Mops, 	
-		  "Random numbers generated",
+          tm, Mops, "Random numbers generated",
 		  verified, NPBVERSION, COMPILETIME,
 		  CS1, CS2, CS3, CS4, CS5, CS6, CS7);
 
