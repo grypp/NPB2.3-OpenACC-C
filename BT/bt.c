@@ -2979,7 +2979,7 @@ c-------------------------------------------------------------------*/
 
   int i, j, k, m, n;
 
-  #pragma acc kernels present(lhs,rhs) present_or_copyin(grid_points)
+  #pragma acc kernels present(lhs,rhs,grid_points)
   for (i = 1; i < grid_points[0]-1; i++) {
     for (j = 1; j < grid_points[1]-1; j++) {
       for (k = grid_points[2]-2; k >= 0; k--) {
