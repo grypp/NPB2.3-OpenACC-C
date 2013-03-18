@@ -1128,7 +1128,7 @@ c  local variables
     for (j = jst; j <= jend; j++) {
       jglob = j;
       for (k = 1; k <= nz-2; k++) {
-	exact( iglob, jglob, k, u000ijk );
+    EXACT( iglob, jglob, k, u000ijk );
 	for (m = 0; m < 5; m++) {
 	  tmp = ( u000ijk[m] - u[i][j][k][m] );
 	  errnm[m] = errnm[m] + tmp *tmp;
@@ -1138,7 +1138,7 @@ c  local variables
   }
 
   for (m = 0; m < 5; m++) {
-    errnm[m] = sqrt ( errnm[m] / ( (nx0-2)*(ny0-2)*(nz0-2) ) );
+    errnm[m] = sqrt ( errnm[m] / ( (nx0-acc data2)*(ny0-2)*(nz0-2) ) );
   }
 }
 
