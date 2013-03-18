@@ -112,6 +112,9 @@ c   set up coefficients
 --------------------------------------------------------------------*/
   setcoeff();
 
+#pragma acc data create(u,rsd,frct,flux,a,b,c,d) copyin(ce) copyout(u)
+{
+
 /*--------------------------------------------------------------------
 c   set the boundary values for dependent variables
 --------------------------------------------------------------------*/
@@ -131,6 +134,8 @@ c   compute the forcing term based on prescribed exact solution
 c   perform the SSOR iterations
 --------------------------------------------------------------------*/
   ssor();
+
+} /* end acc data */
 
 /*--------------------------------------------------------------------
 c   compute the solution error
@@ -192,7 +197,7 @@ c  local variables
   double tmp, tmp1;
   double tmat[5][5];
 
-  #pragma acc kernels present_or_copyin(v,ldz)
+  #pragma acc kernels present(v,ldz)
   for (i = ist; i <= iend; i++) {
     for (j = jst; j <= jend; j++) {
       for (m = 0; m < 5; m++) {
@@ -206,8 +211,7 @@ c  local variables
     }
   }
 
-  #pragma acc kernels present(v, ldx, ldy, d) \
-    present_or_create(tmat)
+  #pragma acc kernels present(v, ldx, ldy, d) create(tmat)
   for (i = ist; i <= iend; i++) {
     for (j = jst; j <= jend; j++) {
       for (m = 0; m < 5; m++) {
@@ -409,8 +413,7 @@ c  local variables
   double tmp, tmp1;
   double tmat[5][5];
 
-  #pragma acc kernels present_or_copyin(udz, v) \
-    present_or_create(tv)
+  #pragma acc kernels present(udz, v, tv)
   for (i = iend; i >= ist; i--) {
     for (j = jend; j >= jst; j--) {
       for (m = 0; m < 5; m++) {
@@ -424,8 +427,7 @@ c  local variables
     }
   }
 
-  #pragma acc kernels present(tv, udx, udy, v, d) \
-    present_or_create(tmat)
+  #pragma acc kernels present(tv, udx, udy, v, d) create(tmat)
   for (i = iend; i >= ist; i--) {
     for (j = jend; j >= jst; j--) {
       for (m = 0; m < 5; m++) {
@@ -674,7 +676,7 @@ c  local variables
 
   dsspm = dssp;
 
-  #pragma acc kernels present_or_create(frct)
+  #pragma acc kernels present(frct)
   for (i = 0; i < nx; i++) {
     for (j = 0; j < ny; j++) {
       for (k = 0; k < nz; k++) {
@@ -685,7 +687,7 @@ c  local variables
     }
   }
 
-  #pragma acc kernels present_or_copyin(ce) present_or_create(rsd)
+  #pragma acc kernels present(ce,rsd)
   for (i = 0; i < nx; i++) {
     iglob = i;
     xi = ( (double)(iglob) ) / ( nx0 - 1 );
@@ -720,7 +722,7 @@ c   xi-direction flux differences
   L1 = 0;
   L2 = nx-1;
 
-  #pragma acc kernels present_or_create(flux) present(rsd)
+  #pragma acc kernels present(flux,rsd)
   for (i = L1; i <= L2; i++) {
     for (j = jst; j <= jend; j++) {
       for (k = 1; k < nz - 1; k++) {
@@ -1137,44 +1139,6 @@ c  local variables
 
   for (m = 0; m < 5; m++) {
     errnm[m] = sqrt ( errnm[m] / ( (nx0-2)*(ny0-2)*(nz0-2) ) );
-  }
-}
-
-/*--------------------------------------------------------------------
---------------------------------------------------------------------*/
-
-static void exact( int i, int j, int k, double u000ijk[5] ) {
-
-/*--------------------------------------------------------------------
-c
-c   compute the exact solution at (i,j,k)
-c
---------------------------------------------------------------------*/
-
-/*--------------------------------------------------------------------
-c  local variables
---------------------------------------------------------------------*/
-  int m;
-  double xi, eta, zeta;
-
-  xi  = ((double)i) / (nx0 - 1);
-  eta  = ((double)j) / (ny0 - 1);
-  zeta = ((double)k) / (nz - 1);
-
-  for (m = 0; m < 5; m++) {
-    u000ijk[m] =  ce[m][0]
-      + ce[m][1] * xi
-      + ce[m][2] * eta
-      + ce[m][3] * zeta
-      + ce[m][4] * xi * xi
-      + ce[m][5] * eta * eta
-      + ce[m][6] * zeta * zeta
-      + ce[m][7] * xi * xi * xi
-      + ce[m][8] * eta * eta * eta
-      + ce[m][9] * zeta * zeta * zeta
-      + ce[m][10] * xi * xi * xi * xi
-      + ce[m][11] * eta * eta * eta * eta
-      + ce[m][12] * zeta * zeta * zeta * zeta;
   }
 }
 
@@ -1940,7 +1904,7 @@ c  local variables
     sum[m] = 0.0;
   }
 
-  #pragma acc kernels present_or_copyin(v)
+  #pragma acc kernels present(v)
   for (i = ist; i <= iend; i++) {
     for (j = jst; j <= jend; j++) {
       #pragma acc loop vector reduction(+:sum0,sum1,sum2,sum3,sum4)
@@ -2705,13 +2669,13 @@ c   local variables
 /*--------------------------------------------------------------------
 c   set the dependent variable values along the top and bottom faces
 --------------------------------------------------------------------*/
-  #pragma acc kernels present_or_create(u)
+  #pragma acc kernels present(u)
   for (i = 0; i < nx; i++) {
     iglob = i;
     for (j = 0; j < ny; j++) {
       jglob = j;
-      exact( iglob, jglob, 0, &u[i][j][0][0] );
-      exact( iglob, jglob, nz-1, &u[i][j][nz-1][0] );
+      EXACT( iglob, jglob, 0, &u[i][j][0][0] );
+      EXACT( iglob, jglob, nz-1, &u[i][j][nz-1][0] );
     }
   }
 
@@ -2722,7 +2686,7 @@ c   set the dependent variable values along north and south faces
   for (i = 0; i < nx; i++) {
     iglob = i;
     for (k = 0; k < nz; k++) {
-      exact( iglob, 0, k, &u[i][0][k][0] );
+      EXACT( iglob, 0, k, &u[i][0][k][0] );
     }
   }
 
@@ -2730,7 +2694,7 @@ c   set the dependent variable values along north and south faces
   for (i = 0; i < nx; i++) {
     iglob = i;
     for (k = 0; k < nz; k++) {
-      exact( iglob, ny0-1,  k, &u[i][ny-1][k][0] );
+      EXACT( iglob, ny0-1,  k, &u[i][ny-1][k][0] );
     }
   }
 
@@ -2741,7 +2705,7 @@ c   set the dependent variable values along east and west faces
   for (j = 0; j < ny; j++) {
     jglob = j;
     for (k = 0; k < nz; k++) {
-      exact( 0, jglob, k, &u[0][j][k][0] );
+      EXACT( 0, jglob, k, &u[0][j][k][0] );
     }
   }
 
@@ -2749,7 +2713,7 @@ c   set the dependent variable values along east and west faces
   for (j = 0; j < ny; j++) {
     jglob = j;
     for (k = 0; k < nz; k++) {
-      exact( nx0-1, jglob, k, &u[nx-1][j][k][0] );
+      EXACT( nx0-1, jglob, k, &u[nx-1][j][k][0] );
     }
   }
 }
@@ -2921,7 +2885,8 @@ c  local variables
     ue_iny0k[5],ue_ij1[5],ue_ijnz[5];
 
   #pragma acc kernels present_or_create(ue_1jk, ue_nx0jk, ue_i1k) \
-    present_or_create(ue_iny0k, ue_ij1, ue_ijnz, u)
+    present_or_create(ue_iny0k, ue_ij1, ue_ijnz, u) \
+    present(u)
   for (j = 0; j < ny; j++) {
     jglob = j;
     for (k = 1; k < nz - 1; k++) {
@@ -2932,12 +2897,12 @@ c  local variables
 	  iglob = i;
 	  if(iglob != 0 && iglob != nx0-1) {
 	    xi = ( (double) (iglob) ) / (nx0-1);
-	    exact (0,jglob,k,ue_1jk);
-	    exact (nx0-1,jglob,k,ue_nx0jk);
-	    exact (iglob,0,k,ue_i1k);
-	    exact (iglob,ny0-1,k,ue_iny0k);
-	    exact (iglob,jglob,0,ue_ij1);
-	    exact (iglob,jglob,nz-1,ue_ijnz);
+        EXACT (0,jglob,k,ue_1jk);
+        EXACT (nx0-1,jglob,k,ue_nx0jk);
+        EXACT (iglob,0,k,ue_i1k);
+        EXACT (iglob,ny0-1,k,ue_iny0k);
+        EXACT (iglob,jglob,0,ue_ij1);
+        EXACT (iglob,jglob,nz-1,ue_ijnz);
 	    for (m = 0; m < 5; m++) {
 	      pxi =   ( 1.0 - xi ) * ue_1jk[m]
 		+ xi   * ue_nx0jk[m];
@@ -2984,7 +2949,7 @@ c   begin pseudo-time stepping iterations
 c   initialize a,b,c,d to zero (guarantees that page tables have been
 c   formed, if applicable on given architecture, before timestepping).
 --------------------------------------------------------------------*/
-  #pragma acc kernels present_or_create(a, b, c, d)
+  #pragma acc kernels present(a, b, c, d)
   for (i = 0; i < ISIZ1; i++) {
     for (j = 0; j < ISIZ2; j++) {
       for (k = 0; k < 5; k++) {
