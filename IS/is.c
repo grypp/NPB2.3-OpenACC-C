@@ -1,8 +1,8 @@
 /*--------------------------------------------------------------------
   
-  NAS Parallel Benchmarks 2.3 OpenMP C versions - IS
+  NAS Parallel Benchmarks 2.3 OpenACC C versions - IS
 
-  This benchmark is an OpenMP C version of the NPB IS code.
+  This benchmark is an OpenACC C version of the NPB IS code.
   
   The OpenMP C versions are developed by RWCP and derived from the serial
   Fortran versions in "NPB 2.3-serial" developed by NAS.
@@ -27,6 +27,7 @@
   Author: M. Yarrow
 
   OpenMP C version: S. Satoh
+  OpenACC C version: P. Makpaisit
   
 --------------------------------------------------------------------*/
 
@@ -580,9 +581,7 @@ void rank( int iteration )
 /*************             M  A  I  N             ****************/
 /*****************************************************************/
 
-main( argc, argv )
-    int argc;
-    char **argv;
+main( int argc, char **argv )
 {
 
     int             i, iteration, itemp;
@@ -619,7 +618,7 @@ main( argc, argv )
         
 
 /*  Printout initial NPB info */
-    printf( "\n\n NAS Parallel Benchmarks 2.3 OpenMP C version"
+    printf( "\n\n NAS Parallel Benchmarks 2.3 OpenACC C version"
 	    " - IS Benchmark\n\n" );
     printf( " Size:  %d  (class %c)\n", TOTAL_KEYS, CLASS );
     printf( " Iterations:   %d\n", MAX_ITERATIONS );
@@ -634,7 +633,7 @@ main( argc, argv )
 
 /*  Do one interation for free (i.e., untimed) to guarantee initialization of  
     all data and code pages and respective tables */
-    #pragma acc data create(key_buff1, key_buff2, prv_buff1, prv_buff_tmp) \
+    #pragma acc data create(key_buff1, key_buff2, prv_buff1, prv_buff_tmp)
     {
     rank( 1 );
     } /* end pragma acc data */
