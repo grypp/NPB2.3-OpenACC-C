@@ -235,7 +235,7 @@ c-------------------------------------------------------------------*/
       eta = (double)j * dnym1;
       for (k = 0; k <= grid_points[2]-1; k++) {
 	zeta = (double)k * dnzm1;
-	exact_solution(xi, eta, zeta, u_exact);
+    EXACT_SOLUTION(xi, eta, zeta, u_exact);
 	for (m = 0; m < 5; m++) {
 	  add = u[m][i][j][k] - u_exact[m];
 	  rms[m] = rms[m] + add*add;
@@ -325,14 +325,14 @@ c-------------------------------------------------------------------*/
       eta = (double)j * dnym1;
 
       for (i = 0; i <= grid_points[0]-1; i++) {
-	xi = (double)i * dnxm1;
+    xi = (double)i * dnxm1;
 
-	exact_solution(xi, eta, zeta, dtemp);
+    EXACT_SOLUTION(xi, eta, zeta, dtemp);
 	for (m = 0; m < 5; m++) {
 	  ue[m][i] = dtemp[m];
-	}
+    }
 
-	dtpp = 1.0 / dtemp[0];
+    dtpp = 1.0 / dtemp[0];
 
 	for (m = 1; m < 5; m++) {
 	  buf[m][i] = dtpp * dtemp[m];
@@ -423,7 +423,7 @@ c-------------------------------------------------------------------*/
       for (j = 0; j <= grid_points[1]-1; j++) {
 	eta = (double)j * dnym1;
 
-	exact_solution(xi, eta, zeta, dtemp);
+    EXACT_SOLUTION(xi, eta, zeta, dtemp);
 	for (m = 0; m < 5; m++) {
 	  ue[m][j] = dtemp[m];
 	}
@@ -520,7 +520,7 @@ c-------------------------------------------------------------------*/
       for (k = 0; k <= grid_points[2]-1; k++) {
 	zeta = (double)k * dnzm1;
 
-	exact_solution(xi, eta, zeta, dtemp);
+    EXACT_SOLUTION(xi, eta, zeta, dtemp);
 	for (m = 0; m < 5; m++) {
 	  ue[m][k] = dtemp[m];
 	}
@@ -1926,7 +1926,7 @@ c block-diagonal matrix-vector multiplication
   double t1, t2, t3, ac, ru1, uu, vv, ww, r1, r2, r3, 
     r4, r5, ac2inv;
 
-  #pragma acc kernels present(rho_i,us,vs,ws,spped,ainv)
+  #pragma acc kernels present(rho_i,us,vs,ws,speed,ainv)
   for (i = 1; i <= grid_points[0]-2; i++) {
     for (j = 1; j <= grid_points[1]-2; j++) {
       for (k = 1; k <= grid_points[2]-2; k++) {
