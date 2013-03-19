@@ -120,12 +120,12 @@ c-------------------------------------------------------------------*/
   int m; \
   double xi, eta, zeta; \
  \
-  xi  = ((double)i) / (nx0 - 1); \
-  eta  = ((double)j) / (ny0 - 1); \
-  zeta = ((double)k) / (nz - 1); \
+  xi  = ((double)(i)) / (nx0 - 1); \
+  eta  = ((double)(j)) / (ny0 - 1); \
+  zeta = ((double)(k)) / (nz - 1); \
  \
   for (m = 0; m < 5; m++) { \
-    (u000ijk)[m] =  ce[m][0] \
+    (u000ij)[m] =  ce[m][0] \
       + ce[m][1] * xi \
       + ce[m][2] * eta \
       + ce[m][3] * zeta \

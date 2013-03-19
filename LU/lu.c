@@ -1,8 +1,8 @@
 /*--------------------------------------------------------------------
   
-  NAS Parallel Benchmarks 2.3 OpenMP C versions - LU
+  NAS Parallel Benchmarks 2.3 OpenACC C versions - LU
 
-  This benchmark is an OpenMP C version of the NPB LU code.
+  This benchmark is an OpenACC C version of the NPB LU code.
   
   The OpenMP C versions are developed by RWCP and derived from the serial
   Fortran versions in "NPB 2.3-serial" developed by NAS.
@@ -1138,7 +1138,7 @@ c  local variables
   }
 
   for (m = 0; m < 5; m++) {
-    errnm[m] = sqrt ( errnm[m] / ( (nx0-acc data2)*(ny0-2)*(nz0-2) ) );
+    errnm[m] = sqrt ( errnm[m] / ( (nx0-2)*(ny0-2)*(nz0-2) ) );
   }
 }
 
@@ -2148,7 +2148,7 @@ c       tolrsd = steady state residual tolerance levels
 c       nx, ny, nz = number of grid points in x, y, z directions
 --------------------------------------------------------------------*/
 
-  printf("\n\n NAS Parallel Benchmarks 2.3 OpenMP C version"
+  printf("\n\n NAS Parallel Benchmarks 2.3 OpenACC C version"
 	 " - LU Benchmark\n\n");
 
   fp = fopen("inputlu.data", "r");
