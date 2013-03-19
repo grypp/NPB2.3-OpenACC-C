@@ -1,8 +1,8 @@
 /*--------------------------------------------------------------------
   
-  NAS Parallel Benchmarks 2.3 OpenMP C versions - EP
+  NAS Parallel Benchmarks 2.3 OpenACC C versions - EP
 
-  This benchmark is an OpenMP C version of the NPB EP code.
+  This benchmark is an OpenACC C version of the NPB EP code.
   
   The OpenMP C versions are developed by RWCP and derived from the serial
   Fortran versions in "NPB 2.3-serial" developed by NAS.
@@ -82,7 +82,7 @@ c   Have to strip off the decimal point put in there by the floating
 c   point print statement (internal file)
 */
 
-    printf("\n\n NAS Parallel Benchmarks 2.3 OpenMP C version"
+    printf("\n\n NAS Parallel Benchmarks 2.3 OpenACC C version"
 	   " - EP Benchmark\n");
     sprintf(size, "%12.0f", pow(2.0, M+1));
     for (j = 13; j >= 1; j--) {

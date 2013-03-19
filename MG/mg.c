@@ -1,8 +1,8 @@
 /*--------------------------------------------------------------------
   
-  NAS Parallel Benchmarks 2.3 OpenMP C versions - MG
+  NAS Parallel Benchmarks 2.3 OpenACC C versions - MG
 
-  This benchmark is an OpenMP C version of the NPB MG code.
+  This benchmark is an OpenACC C version of the NPB MG code.
   
   The OpenMP C versions are developed by RWCP and derived from the serial
   Fortran versions in "NPB 2.3-serial" developed by NAS.
@@ -91,32 +91,8 @@ c and probably shouldn't be allocated on the stack. They
 c are always passed as subroutine args. 
 c------------------------------------------------------------------------*/
 
-// TODO: now use maximum size, next optimize space
-/*#define u(l,k,j,i) (u[((l)*m2[l]*m3[l]*(lt+1))+((k)*m2[l]*m3[l])+((j)*m2[l])+(i)])
-#define u(l,k,j) (u[((l)*m2[l]*m3[l]*(lt+1))+((k)*m2[l]*m3[l])+((j)*m2[l])])
-#define u(l,k) (u[((l)*m2[l]*m3[l]*(lt+1))+((k)*m2[l]*m3[l])])
-#define u(l) (u[((l)*m2[l]*m3[l]*(lt+1))])*/
-#define u(l,k,j,i) (u[((l)*(lt+1)*(lt+1)*(lt+1))+((k)*(lt+1)*(lt+1))+((j)*(lt+1))+(i)])
-#define u(l,k,j) (u[((l)*(lt+1)*(lt+1)*(lt+1))+((k)*(lt+1)*(lt+1))+((j)*(lt+1))])
-#define u(l,k) (u[((l)*(lt+1)*(lt+1)*(lt+1))+((k)*(lt+1)*(lt+1))])
-#define u(l) (u[((l)*(lt+1)*(lt+1)*(lt+1))])
-    double *u;
-/*#define v(k,j,i) (v[((k)*m2[lt]*m1[lt])+((j)*m1[lt])+(i)])
-#define v(k,j) (v[((k)*m2[lt]*m1[lt])+((j)*m1[lt])])
-#define v(k) (v[((k)*m2[lt]*m1[lt])])*/
-#define v(k,j,i) (v[((k)*(lt+1)*(lt+1))+((j)*(lt+1))+(i)])
-#define v(k,j,i) (v[((k)*(lt+1)*(lt+1))+((j)*(lt+1))])
-#define v(k,j,i) (v[((k)*(lt+1)*(lt+1))])
-    double *v;
-/*#define r(l,k,j,i) (r[((l)*m3[l]*m2[l]*m1[l])+((k)*m2[l]*m1[l])+((j)*m1[l])+(i)])
-#define r(l,k,j) (r[((l)*m3[l]*m2[l]*m1[l])+((k)*m2[l]*m1[l])+((j)*m1[l])])
-#define r(l,k) (r[((l)*m3[l]*m2[l]*m1[l])+((k)*m2[l]*m1[l])])
-#define r(l) (r[((l)*m3[l]*m2[l]*m1[l])])*/
-#define r(l,k,j,i) (r[((l)*(lt+1)*(lt+1)*(lt+1))+((k)*(lt+1)*(lt+1))+((j)*(lt+1))+(i)])
-#define r(l,k,j) (r[((l)*(lt+1)*(lt+1)*(lt+1))+((k)*(lt+1)*(lt+1))+((j)*(lt+1))])
-#define r(l,k) (r[((l)*(lt+1)*(lt+1)*(lt+1))+((k)*(lt+1)*(lt+1))])
-#define r(l) (r[((l)*(lt+1)*(lt+1)*(lt+1))])
-    double *r;
+    double *u, *r;       /* 4D array */
+    double *v;           /* 3D array */
 
     double a[4], c[4];
 
@@ -138,7 +114,7 @@ c------------------------------------------------------------------------*/
 c Read in and broadcast input data
 c---------------------------------------------------------------------*/
 
-    printf("\n\n NAS Parallel Benchmarks 2.3 OpenMP C version"
+    printf("\n\n NAS Parallel Benchmarks 2.3 OpenACC C version"
 	   " - MG Benchmark\n\n");
 
     fp = fopen("mg.input", "r");
@@ -229,7 +205,13 @@ c-------------------------------------------------------------------*/
     v = (double *)malloc((lt+1)*(lt+1)*(lt+1)*sizeof(double));
     r = (double *)malloc((lt+1)*(lt+1)*(lt+1)*(lt+1)*sizeof(double));
 
-    zero3(u(lt),n1,n2,n3);
+#pragma acc data create(u[0:(lt+1)*(lt+1)*(lt+1)*(lt+1)]) \
+    create(v[0:(lt+1)*(lt+1)*(lt+1)]) \
+    create(r[0:(lt+1)*(lt+1)*(lt+1)*(lt+1)]) \
+    copyin(a,c)
+{
+
+    zero3(GET_SUB_ARRAY(u,lt),n1,n2,n3);
 
     zran3(v,n1,n2,n3,nx[lt],ny[lt],lt);
 
@@ -243,18 +225,18 @@ c-------------------------------------------------------------------*/
 	   nx[lt], ny[lt], nz[lt], Class);
     printf(" Iterations: %3d\n", nit);
 
-    resid(u(lt),v,r[lt],n1,n2,n3,a,lt);
-    norm2u3(r[lt],n1,n2,n3,&rnm2,&rnmu,nx[lt],ny[lt],nz[lt]);
+    resid(GET_SUB_ARRAY(u,lt),v,GET_SUB_ARRAY(r,lt),n1,n2,n3,a,lt);
+    norm2u3(GET_SUB_ARRAY(r,lt),n1,n2,n3,&rnm2,&rnmu,nx[lt],ny[lt],nz[lt]);
 
 /*c---------------------------------------------------------------------
 c     One iteration for startup
 c---------------------------------------------------------------------*/
     mg3P(u,v,r,a,c,n1,n2,n3,lt);
-    resid(u(lt),v,r[lt],n1,n2,n3,a,lt);
+    resid(GET_SUB_ARRAY(u,lt),v,GET_SUB_ARRAY(r,lt),n1,n2,n3,a,lt);
 
     setup(&n1,&n2,&n3,lt);
 
-    zero3(u(lt),n1,n2,n3);
+    zero3(GET_SUB_ARRAY(u,lt),n1,n2,n3);
 
     zran3(v,n1,n2,n3,nx[lt],ny[lt],lt);
 
@@ -262,15 +244,16 @@ c---------------------------------------------------------------------*/
     timer_start(T_BENCH);
 
 
-    resid(u(lt),v,r[lt],n1,n2,n3,a,lt);
-    norm2u3(r[lt],n1,n2,n3,&rnm2,&rnmu,nx[lt],ny[lt],nz[lt]);
+    resid(GET_SUB_ARRAY(u,lt),v,GET_SUB_ARRAY(r,lt),n1,n2,n3,a,lt);
+    norm2u3(GET_SUB_ARRAY(r,lt),n1,n2,n3,&rnm2,&rnmu,nx[lt],ny[lt],nz[lt]);
 
     for ( it = 1; it <= nit; it++) {
 	mg3P(u,v,r,a,c,n1,n2,n3,lt);
-    resid(u(lt),v,r[lt],n1,n2,n3,a,lt);
+    resid(GET_SUB_ARRAY(u,lt),v,GET_SUB_ARRAY(r,lt),n1,n2,n3,a,lt);
     }
-    norm2u3(r[lt],n1,n2,n3,&rnm2,&rnmu,nx[lt],ny[lt],nz[lt]);
+    norm2u3(GET_SUB_ARRAY(r,lt),n1,n2,n3,&rnm2,&rnmu,nx[lt],ny[lt],nz[lt]);
 
+} /* end acc data */
 
     timer_stop(T_BENCH);
     t = timer_read(T_BENCH);
@@ -388,40 +371,46 @@ c-------------------------------------------------------------------*/
 
     for (k = lt; k >= lb+1; k--) {
 	j = k-1;
-	rprj3(r[k], m1[k], m2[k], m3[k],
-	      r[j], m1[j], m2[j], m3[j], k);
+    rprj3(GET_SUB_ARRAY(r,k), m1[k], m2[k], m3[k],
+          GET_SUB_ARRAY(r,j), m1[j], m2[j], m3[j], k);
     }
 
     k = lb;
 /*--------------------------------------------------------------------
 c     compute an approximate solution on the coarsest grid
 c-------------------------------------------------------------------*/
-    zero3(u(k), m1[k], m2[k], m3[k]);
-    psinv(r[k], u(k), m1[k], m2[k], m3[k], c, k);
+    zero3(GET_SUB_ARRAY(u,k), m1[k], m2[k], m3[k]);
+    psinv(GET_SUB_ARRAY(r,k), GET_SUB_ARRAY(u,k),
+          m1[k], m2[k], m3[k], c, k);
 
     for (k = lb+1; k <= lt-1; k++) {
 	j = k-1;
 /*--------------------------------------------------------------------
 c        prolongate from level k-1  to k
 c-------------------------------------------------------------------*/
-    zero3(u(k), m1[k], m2[k], m3[k]);
-    interp(u(j), m1[j], m2[j], m3[j],
-           u(k), m1[k], m2[k], m3[k], k);
+    zero3(GET_SUB_ARRAY(u,k), m1[k], m2[k], m3[k]);
+    interp(GET_SUB_ARRAY(u,j), m1[j], m2[j], m3[j],
+           GET_SUB_ARRAY(u,k), m1[k], m2[k], m3[k], k);
 /*--------------------------------------------------------------------
 c        compute residual for level k
 c-------------------------------------------------------------------*/
-    resid(u(k), r[k], r[k], m1[k], m2[k], m3[k], a, k);
+    resid(GET_SUB_ARRAY(u,k), GET_SUB_ARRAY(r,k),
+          GET_SUB_ARRAY(r,k), m1[k], m2[k], m3[k], a, k);
 /*--------------------------------------------------------------------
 c        apply smoother
 c-------------------------------------------------------------------*/
-    psinv(r[k], u(k), m1[k], m2[k], m3[k], c, k);
+    psinv(GET_SUB_ARRAY(r,k), GET_SUB_ARRAY(u,k),
+          m1[k], m2[k], m3[k], c, k);
     }
 
     j = lt - 1;
     k = lt;
-    interp(u(j), m1[j], m2[j], m3[j], u(lt), n1, n2, n3, k);
-    resid(u(lt), v, r[lt], n1, n2, n3, a, k);
-    psinv(r[lt], u(lt), n1, n2, n3, c, k);
+    interp(GET_SUB_ARRAY(u,j), m1[j], m2[j], m3[j],
+           GET_SUB_ARRAY(u,lt), n1, n2, n3, k);
+    resid(GET_SUB_ARRAY(u,lt), v, GET_SUB_ARRAY(r,lt),
+          n1, n2, n3, a, k);
+    psinv(GET_SUB_ARRAY(r,lt), GET_SUB_ARRAY(u,lt),
+          n1, n2, n3, c, k);
 }
 
 /*--------------------------------------------------------------------
@@ -451,15 +440,19 @@ c-------------------------------------------------------------------*/
     for (i3 = 1; i3 < n3-1; i3++) {
 	for (i2 = 1; i2 < n2-1; i2++) {
             for (i1 = 0; i1 < n1; i1++) {
-		r1[i1] = r[i3][i2-1][i1] + r[i3][i2+1][i1]
-		    + r[i3-1][i2][i1] + r[i3+1][i2][i1];
-		r2[i1] = r[i3-1][i2-1][i1] + r[i3-1][i2+1][i1]
-		    + r[i3+1][i2-1][i1] + r[i3+1][i2+1][i1];
+        r1[i1] = ACCESS_ARRAY_3D(r,i3,i2-1,i1)
+               + ACCESS_ARRAY_3D(r,i3,i2+1,i1)
+               + ACCESS_ARRAY_3D(r,i3-1,i2,i1)
+               + ACCESS_ARRAY_3D(r,i3+1,i2,i1);
+        r2[i1] = ACCESS_ARRAY_3D(r,i3-1,i2-1,i1)
+               + ACCESS_ARRAY_3D(r,i3-1,i2+1,i1)
+               + ACCESS_ARRAY_3D(r,i3+1,i2-1,i1)
+               + ACCESS_ARRAY_3D(r,i3+1,i2+1,i1);
 	    }
             for (i1 = 1; i1 < n1-1; i1++) {
-		u[i3][i2][i1] = u[i3][i2][i1]
-		    + c[0] * r[i3][i2][i1]
-		    + c[1] * ( r[i3][i2][i1-1] + r[i3][i2][i1+1]
+        ACCESS_ARRAY_3D(u,i3,i2,i1) = ACCESS_ARRAY_3D(u,i3,i2,i1)
+            + c[0] * ACCESS_ARRAY_3D(r,i3,i2,i1)
+            + c[1] * ( ACCESS_ARRAY_3D(r,i3,i2,i1-1) + ACCESS_ARRAY_3D(r,i3,i2,i1+1)
 			       + r1[i1] )
 		    + c[2] * ( r2[i1] + r1[i1-1] + r1[i1+1] );
 /*--------------------------------------------------------------------
@@ -509,19 +502,22 @@ c-------------------------------------------------------------------*/
 
     int i3, i2, i1;
     double u1[M], u2[M];
-    #pragma acc kernels present_or_create(u1,u2) \
-        present(u, v, r, a)
+    #pragma acc kernels create(u1,u2) present(u, v, r, a)
     for (i3 = 1; i3 < n3-1; i3++) {
 	for (i2 = 1; i2 < n2-1; i2++) {
             for (i1 = 0; i1 < n1; i1++) {
-		u1[i1] = u[i3][i2-1][i1] + u[i3][i2+1][i1]
-		       + u[i3-1][i2][i1] + u[i3+1][i2][i1];
-		u2[i1] = u[i3-1][i2-1][i1] + u[i3-1][i2+1][i1]
-		       + u[i3+1][i2-1][i1] + u[i3+1][i2+1][i1];
+        u1[i1] = ACCESS_ARRAY_3D(u,i3,i2-1,i1)
+               + ACCESS_ARRAY_3D(u,i3,i2+1,i1)
+               + ACCESS_ARRAY_3D(u,i3-1,i2,i1)
+               + ACCESS_ARRAY_3D(u,i3+1,i2,i1);
+        u2[i1] = ACCESS_ARRAY_3D(u,i3-1,i2-1,i1)
+               + ACCESS_ARRAY_3D(u,i3-1,i2+1,i1)
+               + ACCESS_ARRAY_3D(u,i3+1,i2-1,i1)
+               + ACCESS_ARRAY_3D(u,i3+1,i2+1,i1);
 	    }
 	    for (i1 = 1; i1 < n1-1; i1++) {
-		r[i3][i2][i1] = v[i3][i2][i1]
-		    - a[0] * u[i3][i2][i1]
+        ACCESS_ARRAY_3D(r,i3,i2,i1) = ACCESS_ARRAY_3D(v,i3,i2,i1)
+            - a[0] * ACCESS_ARRAY_3D(u,i3,i2,i1)
 /*--------------------------------------------------------------------
 c  Assume a(1) = 0      (Enable 2 lines below if a(1) not= 0)
 c---------------------------------------------------------------------
@@ -589,8 +585,7 @@ c-------------------------------------------------------------------*/
     } else {
         d3 = 1;
     }
-    #pragma acc kernels present_or_create(x1, y1) \
-        present(r)
+    #pragma acc kernels create(x1, y1) present(r)
     for (j3 = 1; j3 < m3j-1; j3++) {
 	i3 = 2*j3-d3;
 /*C        i3 = 2*j3-1*/
@@ -601,22 +596,30 @@ c-------------------------------------------------------------------*/
             for (j1 = 1; j1 < m1j; j1++) {
 		i1 = 2*j1-d1;
 /*C             i1 = 2*j1-1*/
-		x1[i1] = r[i3+1][i2][i1] + r[i3+1][i2+2][i1]
-		    + r[i3][i2+1][i1] + r[i3+2][i2+1][i1];
-		y1[i1] = r[i3][i2][i1] + r[i3+2][i2][i1]
-		    + r[i3][i2+2][i1] + r[i3+2][i2+2][i1];
+        x1[i1] = ACCESS_ARRAY_3D(r,i3+1,i2,i1)
+               + ACCESS_ARRAY_3D(r,i3+1,i2+2,i1)
+               + ACCESS_ARRAY_3D(r,i3,i2+1,i1)
+               + ACCESS_ARRAY_3D(r,i3+2,i2+1,i1);
+        y1[i1] = ACCESS_ARRAY_3D(r,i3,i2,i1)
+               + ACCESS_ARRAY_3D(r,i3+2,i2,i1)
+               + ACCESS_ARRAY_3D(r,i3,i2+2,i1)
+               + ACCESS_ARRAY_3D(r,i3+2,i2+2,i1);
 	    }
 
             for (j1 = 1; j1 < m1j-1; j1++) {
 		i1 = 2*j1-d1;
 /*C             i1 = 2*j1-1*/
-		y2 = r[i3][i2][i1+1] + r[i3+2][i2][i1+1]
-		    + r[i3][i2+2][i1+1] + r[i3+2][i2+2][i1+1];
-		x2 = r[i3+1][i2][i1+1] + r[i3+1][i2+2][i1+1]
-		    + r[i3][i2+1][i1+1] + r[i3+2][i2+1][i1+1];
-		s[j3][j2][j1] =
-		    0.5 * r[i3+1][i2+1][i1+1]
-		    + 0.25 * ( r[i3+1][i2+1][i1] + r[i3+1][i2+1][i1+2] + x2)
+        y2 = ACCESS_ARRAY_3D(r,i3,i2,i1+1)
+           + ACCESS_ARRAY_3D(r,i3+2,i2,i1+1)
+           + ACCESS_ARRAY_3D(r,i3,i2+2,i1+1)
+           + ACCESS_ARRAY_3D(r,i3+2,i2+2,i1+1);
+        x2 = ACCESS_ARRAY_3D(r,i3+1,i2,i1+1)
+           + ACCESS_ARRAY_3D(r,i3+1,i2+2,i1+1)
+           + ACCESS_ARRAY_3D(r,i3,i2+1,i1+1)
+           + ACCESS_ARRAY_3D(r,i3+2,i2+1,i1+1);
+        ACCESS_ARRAY_3D(s,j3,j2,j1) =
+            0.5 * ACCESS_ARRAY_3D(r,i3+1,i2+1,i1+1)
+            + 0.25 * ( ACCESS_ARRAY_3D(r,i3+1,i2+1,i1) + ACCESS_ARRAY_3D(r,i3+1,i2+1,i1+2) + x2)
 		    + 0.125 * ( x1[i1] + x1[i1+2] + y2)
 		    + 0.0625 * ( y1[i1] + y1[i1+2] );
 	    }
@@ -664,38 +667,41 @@ c      parameter( m=535 )
     double z1[M], z2[M], z3[M];
 
     if ( n1 != 3 && n2 != 3 && n3 != 3 ) {
-    #pragma acc kernels present_or_create(z1, z2, z3) \
-        present(u)
+    #pragma acc kernels create(z1, z2, z3) present(z, u)
 	for (i3 = 0; i3 < mm3-1; i3++) {
             for (i2 = 0; i2 < mm2-1; i2++) {
 		for (i1 = 0; i1 < mm1; i1++) {
-		    z1[i1] = z[i3][i2+1][i1] + z[i3][i2][i1];
-		    z2[i1] = z[i3+1][i2][i1] + z[i3][i2][i1];
-		    z3[i1] = z[i3+1][i2+1][i1] + z[i3+1][i2][i1] + z1[i1];
+            z1[i1] = ACCESS_ARRAY_3D(z,i3,i2+1,i1)
+                    + ACCESS_ARRAY_3D(z,i3,i2,i1);
+            z2[i1] = ACCESS_ARRAY_3D(z,i3+1,i2,i1)
+                    + ACCESS_ARRAY_3D(z,i3,i2,i1);
+            z3[i1] = ACCESS_ARRAY_3D(z,i3+1,i2+1,i1)
+                    + ACCESS_ARRAY_3D(z,i3+1,i2,i1) + z1[i1];
 		}
 		for (i1 = 0; i1 < mm1-1; i1++) {
-		    u[2*i3][2*i2][2*i1] = u[2*i3][2*i2][2*i1]
-			+z[i3][i2][i1];
-		    u[2*i3][2*i2][2*i1+1] = u[2*i3][2*i2][2*i1+1]
-			+0.5*(z[i3][i2][i1+1]+z[i3][i2][i1]);
+            ACCESS_ARRAY_3D(u,2*i3,2*i2,2*i1)
+                = ACCESS_ARRAY_3D(u,2*i3,2*i2,2*i1)	+ ACCESS_ARRAY_3D(z,i3,i2,i1);
+            ACCESS_ARRAY_3D(u,2*i3,2*i2,2*i1+1)
+                = ACCESS_ARRAY_3D(u,2*i3,2*i2,2*i1+1)
+            +0.5*(ACCESS_ARRAY_3D(z,i3,i2,i1+1)+ACCESS_ARRAY_3D(z,i3,i2,i1));
 		}
 		for (i1 = 0; i1 < mm1-1; i1++) {
-		    u[2*i3][2*i2+1][2*i1] = u[2*i3][2*i2+1][2*i1]
-			+0.5 * z1[i1];
-		    u[2*i3][2*i2+1][2*i1+1] = u[2*i3][2*i2+1][2*i1+1]
-			+0.25*( z1[i1] + z1[i1+1] );
+            ACCESS_ARRAY_3D(u,2*i3,2*i2+1,2*i1)
+                = ACCESS_ARRAY_3D(u,2*i3,2*i2+1,2*i1) +0.5 * z1[i1];
+            ACCESS_ARRAY_3D(u,2*i3,2*i2+1,2*i1+1)
+                = ACCESS_ARRAY_3D(u,2*i3,2*i2+1,2*i1+1) +0.25*( z1[i1] + z1[i1+1] );
 		}
 		for (i1 = 0; i1 < mm1-1; i1++) {
-		    u[2*i3+1][2*i2][2*i1] = u[2*i3+1][2*i2][2*i1]
-			+0.5 * z2[i1];
-		    u[2*i3+1][2*i2][2*i1+1] = u[2*i3+1][2*i2][2*i1+1]
-			+0.25*( z2[i1] + z2[i1+1] );
+            ACCESS_ARRAY_3D(u,2*i3+1,2*i2,2*i1)
+                = ACCESS_ARRAY_3D(u,2*i3+1,2*i2,2*i1) +0.5 * z2[i1];
+            ACCESS_ARRAY_3D(u,2*i3+1,2*i2,2*i1+1)
+                = ACCESS_ARRAY_3D(u,2*i3+1,2*i2,2*i1+1)	+0.25*( z2[i1] + z2[i1+1] );
 		}
 		for (i1 = 0; i1 < mm1-1; i1++) {
-		    u[2*i3+1][2*i2+1][2*i1] = u[2*i3+1][2*i2+1][2*i1]
-			+0.25* z3[i1];
-		    u[2*i3+1][2*i2+1][2*i1+1] = u[2*i3+1][2*i2+1][2*i1+1]
-			+0.125*( z3[i1] + z3[i1+1] );
+            ACCESS_ARRAY_3D(u,2*i3+1,2*i2+1,2*i1)
+                = ACCESS_ARRAY_3D(u,2*i3+1,2*i2+1,2*i1)	+0.25* z3[i1];
+            ACCESS_ARRAY_3D(u,2*i3+1,2*i2+1,2*i1+1)
+                = ACCESS_ARRAY_3D(u,2*i3+1,2*i2+1,2*i1+1) +0.125*( z3[i1] + z3[i1+1] );
 		}
 	    }
 	}
@@ -728,59 +734,59 @@ c      parameter( m=535 )
 	for ( i3 = d3; i3 <= mm3-1; i3++) {
             for ( i2 = d2; i2 <= mm2-1; i2++) {
 		for ( i1 = d1; i1 <= mm1-1; i1++) {
-		    u[2*i3-d3-1][2*i2-d2-1][2*i1-d1-1] =
-			u[2*i3-d3-1][2*i2-d2-1][2*i1-d1-1]
-			+z[i3-1][i2-1][i1-1];
+            ACCESS_ARRAY_3D(u,2*i3-d3-1,2*i2-d2-1,2*i1-d1-1) =
+            ACCESS_ARRAY_3D(u,2*i3-d3-1,2*i2-d2-1,2*i1-d1-1)
+            +ACCESS_ARRAY_3D(z,i3-1,i2-1,i1-1);
 		}
 		for ( i1 = 1; i1 <= mm1-1; i1++) {
-		    u[2*i3-d3-1][2*i2-d2-1][2*i1-t1-1] =
-			u[2*i3-d3-1][2*i2-d2-1][2*i1-t1-1]
-			+0.5*(z[i3-1][i2-1][i1]+z[i3-1][i2-1][i1-1]);
+            ACCESS_ARRAY_3D(u,2*i3-d3-1,2*i2-d2-1,2*i1-t1-1) =
+            ACCESS_ARRAY_3D(u,2*i3-d3-1,2*i2-d2-1,2*i1-t1-1)
+            +0.5*(ACCESS_ARRAY_3D(z,i3-1,i2-1,i1)+ACCESS_ARRAY_3D(z,i3-1,i2-1,i1-1));
 		}
 	    }
             for ( i2 = 1; i2 <= mm2-1; i2++) {
 		for ( i1 = d1; i1 <= mm1-1; i1++) {
-		    u[2*i3-d3-1][2*i2-t2-1][2*i1-d1-1] =
-			u[2*i3-d3-1][2*i2-t2-1][2*i1-d1-1]
-			+0.5*(z[i3-1][i2][i1-1]+z[i3-1][i2-1][i1-1]);
+            ACCESS_ARRAY_3D(u,2*i3-d3-1,2*i2-t2-1,2*i1-d1-1) =
+            ACCESS_ARRAY_3D(u,2*i3-d3-1,2*i2-t2-1,2*i1-d1-1)
+            +0.5*(ACCESS_ARRAY_3D(z,i3-1,i2,i1-1)+ACCESS_ARRAY_3D(z,i3-1,i2-1,i1-1));
 		}
 		for ( i1 = 1; i1 <= mm1-1; i1++) {
-		    u[2*i3-d3-1][2*i2-t2-1][2*i1-t1-1] =
-			u[2*i3-d3-1][2*i2-t2-1][2*i1-t1-1]
-			+0.25*(z[i3-1][i2][i1]+z[i3-1][i2-1][i1]
-			       +z[i3-1][i2][i1-1]+z[i3-1][i2-1][i1-1]);
+            ACCESS_ARRAY_3D(u,2*i3-d3-1,2*i2-t2-1,2*i1-t1-1) =
+            ACCESS_ARRAY_3D(u,2*i3-d3-1,2*i2-t2-1,2*i1-t1-1)
+            +0.25*(ACCESS_ARRAY_3D(z,i3-1,i2,i1)+ACCESS_ARRAY_3D(z,i3-1,i2-1,i1)
+                  +ACCESS_ARRAY_3D(z,i3-1,i2,i1-1)+ACCESS_ARRAY_3D(z,i3-1,i2-1,i1-1));
 		}
 	    }
 	}
-    #pragma acc kernels present(u, c)
+    #pragma acc kernels present(u, z)
 	for ( i3 = 1; i3 <= mm3-1; i3++) {
             for ( i2 = d2; i2 <= mm2-1; i2++) {
 		for ( i1 = d1; i1 <= mm1-1; i1++) {
-		    u[2*i3-t3-1][2*i2-d2-1][2*i1-d1-1] =
-			u[2*i3-t3-1][2*i2-d2-1][2*i1-d1-1]
-			+0.5*(z[i3][i2-1][i1-1]+z[i3-1][i2-1][i1-1]);
+            ACCESS_ARRAY_3D(u,2*i3-t3-1,2*i2-d2-1,2*i1-d1-1) =
+            ACCESS_ARRAY_3D(u,2*i3-t3-1,2*i2-d2-1,2*i1-d1-1)
+            +0.5*(ACCESS_ARRAY_3D(z,i3,i2-1,i1-1)+ACCESS_ARRAY_3D(z,i3-1,i2-1,i1-1));
 		}
 		for ( i1 = 1; i1 <= mm1-1; i1++) {
-		    u[2*i3-t3-1][2*i2-d2-1][2*i1-t1-1] =
-			u[2*i3-t3-1][2*i2-d2-1][2*i1-t1-1]
-			+0.25*(z[i3][i2-1][i1]+z[i3][i2-1][i1-1]
-			       +z[i3-1][i2-1][i1]+z[i3-1][i2-1][i1-1]);
+            ACCESS_ARRAY_3D(u,2*i3-t3-1,2*i2-d2-1,2*i1-t1-1) =
+            ACCESS_ARRAY_3D(u,2*i3-t3-1,2*i2-d2-1,2*i1-t1-1)
+            +0.25*(ACCESS_ARRAY_3D(z,i3,i2-1,i1)+ACCESS_ARRAY_3D(z,i3,i2-1,i1-1)
+                   +ACCESS_ARRAY_3D(z,i3-1,i2-1,i1)+ACCESS_ARRAY_3D(z,i3-1,i2-1,i1-1));
 		}
 	    }
 	    for ( i2 = 1; i2 <= mm2-1; i2++) {
 		for ( i1 = d1; i1 <= mm1-1; i1++) {
-		    u[2*i3-t3-1][2*i2-t2-1][2*i1-d1-1] =
-			u[2*i3-t3-1][2*i2-t2-1][2*i1-d1-1]
-			+0.25*(z[i3][i2][i1-1]+z[i3][i2-1][i1-1]
-			       +z[i3-1][i2][i1-1]+z[i3-1][i2-1][i1-1]);
+            ACCESS_ARRAY_3D(u,2*i3-t3-1,2*i2-t2-1,2*i1-d1-1) =
+            ACCESS_ARRAY_3D(u,2*i3-t3-1,2*i2-t2-1,2*i1-d1-1)
+            +0.25*(ACCESS_ARRAY_3D(z,i3,i2,i1-1)+ACCESS_ARRAY_3D(z,i3,i2-1,i1-1)
+                   +ACCESS_ARRAY_3D(z,i3-1,i2,i1-1)+ACCESS_ARRAY_3D(z,i3-1,i2-1,i1-1));
 		}
 		for ( i1 = 1; i1 <= mm1-1; i1++) {
-		    u[2*i3-t3-1][2*i2-t2-1][2*i1-t1-1] =
-			u[2*i3-t3-1][2*i2-t2-1][2*i1-t1-1]
-			+0.125*(z[i3][i2][i1]+z[i3][i2-1][i1]
-				+z[i3][i2][i1-1]+z[i3][i2-1][i1-1]
-				+z[i3-1][i2][i1]+z[i3-1][i2-1][i1]
-				+z[i3-1][i2][i1-1]+z[i3-1][i2-1][i1-1]);
+            ACCESS_ARRAY_3D(u,2*i3-t3-1,2*i2-t2-1,2*i1-t1-1) =
+            ACCESS_ARRAY_3D(u,2*i3-t3-1,2*i2-t2-1,2*i1-t1-1)
+            +0.125*(ACCESS_ARRAY_3D(z,i3,i2,i1)+ACCESS_ARRAY_3D(z,i3,i2-1,i1)
+                +ACCESS_ARRAY_3D(z,i3,i2,i1-1)+ACCESS_ARRAY_3D(z,i3,i2-1,i1-1)
+                +ACCESS_ARRAY_3D(z,i3-1,i2,i1)+ACCESS_ARRAY_3D(z,i3-1,i2-1,i1)
+                +ACCESS_ARRAY_3D(z,i3-1,i2,i1-1)+ACCESS_ARRAY_3D(z,i3-1,i2-1,i1-1));
 		}
 	    }
 	}
@@ -825,8 +831,8 @@ c-------------------------------------------------------------------*/
     for (i3 = 1; i3 < n3-1; i3++) {
 	for (i2 = 1; i2 < n2-1; i2++) {
             for (i1 = 1; i1 < n1-1; i1++) {
-		p_s = p_s + r[i3][i2][i1] * r[i3][i2][i1];
-		tmp = fabs(r[i3][i2][i1]);
+        p_s = p_s + ACCESS_ARRAY_3D(r,i3,i2,i1) * ACCESS_ARRAY_3D(r,i3,i2,i1);
+        tmp = fabs( ACCESS_ARRAY_3D(r,i3,i2,i1) );
 		if (tmp > p_a) p_a = tmp;
 	    }
 	}
@@ -842,7 +848,7 @@ c-------------------------------------------------------------------*/
 /*--------------------------------------------------------------------
 c-------------------------------------------------------------------*/
 
-static void rep_nrm(double ***u, int n1, int n2, int n3,
+static void rep_nrm(double *u, int n1, int n2, int n3,
 		    char *title, int kk) {
 
 /*--------------------------------------------------------------------
@@ -878,8 +884,8 @@ c-------------------------------------------------------------------*/
     #pragma acc kernels present(u)
     for ( i3 = 1; i3 < n3-1; i3++) {
 	for ( i2 = 1; i2 < n2-1; i2++) {
-	    u[i3][i2][n1-1] = u[i3][i2][1];
-	    u[i3][i2][0] = u[i3][i2][n1-2];
+        ACCESS_ARRAY_3D(u,i3,i2,n1-1) = ACCESS_ARRAY_3D(u,i3,i2,1);
+        ACCESS_ARRAY_3D(u,i3,i2,0) = ACCESS_ARRAY_3D(u,i3,i2,n1-2);
 	}
     }
 
@@ -887,8 +893,8 @@ c-------------------------------------------------------------------*/
     #pragma acc kernels present(u)
     for ( i3 = 1; i3 < n3-1; i3++) {
 	for ( i1 = 0; i1 < n1; i1++) {
-	    u[i3][n2-1][i1] = u[i3][1][i1];
-	    u[i3][0][i1] = u[i3][n2-2][i1];
+        ACCESS_ARRAY_3D(u,i3,n2-1,i1) = ACCESS_ARRAY_3D(u,i3,1,i1);
+        ACCESS_ARRAY_3D(u,i3,0,i1) = ACCESS_ARRAY_3D(u,i3,n2-2,i1);
 	}
     }
 
@@ -896,8 +902,8 @@ c-------------------------------------------------------------------*/
     #pragma acc kernels present(u)
     for ( i2 = 0; i2 < n2; i2++) {
 	for ( i1 = 0; i1 < n1; i1++) {
-	    u[n3-1][i2][i1] = u[1][i2][i1];
-	    u[0][i2][i1] = u[n3-2][i2][i1];
+        ACCESS_ARRAY_3D(u,n3-1,i2,i1) = ACCESS_ARRAY_3D(u,1,i2,i1);
+        ACCESS_ARRAY_3D(u,0,i2,i1) = ACCESS_ARRAY_3D(u,n3-2,i2,i1);
 	}
     }
 }
@@ -949,7 +955,7 @@ c-------------------------------------------------------------------*/
 	x1 = x0;
 	for (i2 = 1; i2 < e2; i2++) {
             xx = x1;
-            vranlc( d1, &xx, A, &(z[i3][i2][0]));
+            vranlc( d1, &xx, A, &(ACCESS_ARRAY_3D(z,i3,i2,0)));
             rdummy = randlc( &x1, a1 );
 	}
 	rdummy = randlc( &x0, a2 );
@@ -976,15 +982,15 @@ c-------------------------------------------------------------------*/
     for (i3 = 1; i3 < n3-1; i3++) {
 	for (i2 = 1; i2 < n2-1; i2++) {
             for (i1 = 1; i1 < n1-1; i1++) {
-		if ( z[i3][i2][i1] > ten[0][1] ) {
-		    ten[0][1] = z[i3][i2][i1];
+        if ( ACCESS_ARRAY_3D(z,i3,i2,i1) > ten[0][1] ) {
+            ten[0][1] = ACCESS_ARRAY_3D(z,i3,i2,i1);
 		    j1[0][1] = i1;
 		    j2[0][1] = i2;
 		    j3[0][1] = i3;
 		    bubble( ten, j1, j2, j3, MM, 1 );
 		}
-		if ( z[i3][i2][i1] < ten[0][0] ) {
-		    ten[0][0] = z[i3][i2][i1];
+        if ( ACCESS_ARRAY_3D(z,i3,i2,i1) < ten[0][0] ) {
+            ten[0][0] = ACCESS_ARRAY_3D(z,i3,i2,i1);
 		    j1[0][0] = i1;
 		    j2[0][0] = i2;
 		    j3[0][0] = i3;
@@ -1000,8 +1006,8 @@ c-------------------------------------------------------------------*/
     i1 = MM - 1;
     i0 = MM - 1;
     for (i = MM - 1 ; i >= 0; i--) {
-	best = z[j3[i1][1]][j2[i1][1]][j1[i1][1]];
-	if (best == z[j3[i1][1]][j2[i1][1]][j1[i1][1]]) {
+    best = ACCESS_ARRAY_3D(z,j3[i1][1],j2[i1][1],j1[i1][1]);
+    if (best == ACCESS_ARRAY_3D(z,j3[i1][1],j2[i1][1],j1[i1][1])) {
             jg[0][i][1] = 0;
             jg[1][i][1] = is1 - 1 + j1[i1][1];
             jg[2][i][1] = is2 - 1 + j2[i1][1];
@@ -1014,8 +1020,8 @@ c-------------------------------------------------------------------*/
             jg[3][i][1] = 0;
 	}
 	ten[i][1] = best;
-	best = z[j3[i0][0]][j2[i0][0]][j1[i0][0]];
-	if (best == z[j3[i0][0]][j2[i0][0]][j1[i0][0]]) {
+    best = ACCESS_ARRAY_3D(z,j3[i0][0],j2[i0][0],j1[i0][0]);
+    if (best == ACCESS_ARRAY_3D(z,j3[i0][0],j2[i0][0],j1[i0][0])) {
             jg[0][i][0] = 0;
             jg[1][i][0] = is1 - 1 + j1[i0][0];
             jg[2][i][0] = is2 - 1 + j2[i0][0];
@@ -1064,15 +1070,15 @@ c-------------------------------------------------------------------*/
     for (i3 = 0; i3 < n3; i3++) {
 	for (i2 = 0; i2 < n2; i2++) {
             for (i1 = 0; i1 < n1; i1++) {
-		z[i3][i2][i1] = 0.0;
+        ACCESS_ARRAY_3D(z,i3,i2,i1) = 0.0;
 	    }
 	}
     }
     for (i = MM-1; i >= m0; i--) {
-	z[j3[i][0]][j2[i][0]][j1[i][0]] = -1.0;
+    ACCESS_ARRAY_3D(z, j3[i][0], j2[i][0], j1[i][0]) = -1.0;
     }
     for (i = MM-1; i >= m1; i--) {
-	z[j3[i][1]][j2[i][1]][j1[i][1]] = 1.0;
+    ACCESS_ARRAY_3D(z, j3[i][1], j2[i][1], j1[i][1]) = 1.0;
     }
 
     comm3(z,n1,n2,n3,k);
@@ -1101,7 +1107,7 @@ c-------------------------------------------------------------------*/
     for (i3 = 0; i3 < m3; i3++) {
 	for (i1 = 0; i1 < m1; i1++) {
 	    for (i2 = 0; i2 < m2; i2++) {
-		printf("%6.3f", z[i3][i2][i1]);
+        printf("%6.3f", ACCESS_ARRAY_3D(z,i3,i2,i1));
 	    }
 	    printf("\n");
 	}
@@ -1214,13 +1220,13 @@ static void zero3(double *z, int n1, int n2, int n3) {
 c-------------------------------------------------------------------*/
 
     int i1, i2, i3;
-    #pragma acc kernels present_or_create(z[0:(n3*n2*n1)])
+    #pragma acc kernels present(z)
     for (i3 = 0;i3 < n3; i3++) {
-	for (i2 = 0; i2 < n2; i2++) {
+    for (i2 = 0; i2 < n2; i2++) {
             for (i1 = 0; i1 < n1; i1++) {
-        z(i3,i2,i1) = 0.0;
-	    }
-	}
+        ACCESS_ARRAY_3D(z,i3,i2,i1) = 0.0;
+        }
+    }
     }
 }
 

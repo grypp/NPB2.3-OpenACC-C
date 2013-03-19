@@ -39,5 +39,13 @@ c  Set at m=1024, can handle cases up to 1024^3 case
 c---------------------------------------------------------------------*/
 #define	M	1037
 
+
+// TODO: now use maximum size, next optimize space
+#define GET_SUB_ARRAY(MAT,l) \
+    (&(MAT[((l)*(lt+1)*(lt+1)*(lt+1))]))
+#define ACCESS_ARRAY_3D(MAT,k,j,i) \
+    (MAT[((k)*(lt+1)*(lt+1))+((j)*(lt+1))+(i)])
+
+
 /* common /buffer/ */
 /*static double buff[4][NM2];*/
