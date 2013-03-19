@@ -61,3 +61,25 @@ static double cv[PROBLEM_SIZE], rhon[PROBLEM_SIZE],
               rhos[PROBLEM_SIZE], rhoq[PROBLEM_SIZE],
               cuf[PROBLEM_SIZE], q[PROBLEM_SIZE],
               ue[5][PROBLEM_SIZE], buf[5][PROBLEM_SIZE];
+
+/*--------------------------------------------------------------------
+c   macro function
+c-------------------------------------------------------------------*/
+
+/* this function returns the exact solution at point xi, eta, zeta */
+#define EXACT_SOLUTION(xi,eta,zeta,dtemp) \
+{ \
+  int m; \
+ \
+  for (m = 0; m < 5; m++) { \
+  dtemp[m] =  ce[0][m] + \
+  xi*(ce[1][m] + xi*(ce[4][m] + \
+    xi*(ce[7][m] + xi*ce[10][m]))) + \
+  eta*(ce[2][m] + eta*(ce[5][m] + \
+      eta*(ce[8][m] + eta*ce[11][m])))+ \
+  zeta*(ce[3][m] + zeta*(ce[6][m] + \
+    zeta*(ce[9][m] + \
+          zeta*ce[12][m]))); \
+  } \
+}
+
