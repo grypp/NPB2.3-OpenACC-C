@@ -52,7 +52,6 @@ static void blts (int nx, int ny, int nz, int k,
 static void buts(int nx, int ny, int nz, int k,
 		 double omega,
 		 double v[ISIZ1][ISIZ2/2*2+1][ISIZ3/2*2+1][5],
-		 double tv[ISIZ1][ISIZ2][5],
 		 double d[ISIZ1][ISIZ2][5][5],
 		 double udx[ISIZ1][ISIZ2][5][5],
 		 double udy[ISIZ1][ISIZ2][5][5],
@@ -391,7 +390,6 @@ c   To improve cache performance, second two dimensions padded by 1
 c   for even number sizes only.  Only needed in v.
 --------------------------------------------------------------------*/
 		 double v[ISIZ1][ISIZ2/2*2+1][ISIZ3/2*2+1][5],
-		 double tv[ISIZ1][ISIZ2][5],
 		 double d[ISIZ1][ISIZ2][5][5],
 		 double udx[ISIZ1][ISIZ2][5][5],
 		 double udy[ISIZ1][ISIZ2][5][5],
@@ -411,9 +409,11 @@ c  local variables
 --------------------------------------------------------------------*/
   int i, j, m;
   double tmp, tmp1;
-  double tmat[5][5];
+  double tmat[5][5], tv[ISIZ1][ISIZ2][5];
 
-  #pragma acc kernels present(udz, v, tv)
+#pragma acc data create(tv)
+{
+  #pragma acc kernels present(tv, udz, v)
   for (i = iend; i >= ist; i--) {
     for (j = jend; j >= jst; j--) {
       for (m = 0; m < 5; m++) {
@@ -598,6 +598,7 @@ c   back substitution
       v[i][j][k][4] = v[i][j][k][4] - tv[i][j][4];
     }
   }
+} /* end acc data */
 }
 
 /*--------------------------------------------------------------------
@@ -1897,17 +1898,29 @@ c   to compute the l2-norm of vector v.
 /*--------------------------------------------------------------------
 c  local variables
 --------------------------------------------------------------------*/
-  int i, j, k, m;
+  int i, j, k, m, l;
   double sum0=0.0, sum1=0.0, sum2=0.0, sum3=0.0, sum4=0.0;
 
   for (m = 0; m < 5; m++) {
     sum[m] = 0.0;
   }
 
-  #pragma acc kernels present(v)
+#ifdef _OPENACC
+  #pragma acc parallel loop present(v) reduction(+:sum0,sum1,sum2,sum3,sum4)
+  for (l = 0; l < ((iend-ist+1)*(jend-jst+1)*(nz0-2)); l++) {
+    i = l / ((jend-jst+1)*(nz0-2));
+    j = l / (nz0-2);
+    k = l % (nz0-2) + 1;
+
+    sum0 = sum0 + v[i][j][k][0] * v[i][j][k][0];
+    sum1 = sum1 + v[i][j][k][1] * v[i][j][k][1];
+    sum2 = sum2 + v[i][j][k][2] * v[i][j][k][2];
+    sum3 = sum3 + v[i][j][k][3] * v[i][j][k][3];
+    sum4 = sum4 + v[i][j][k][4] * v[i][j][k][4];
+  }
+#else
   for (i = ist; i <= iend; i++) {
     for (j = jst; j <= jend; j++) {
-      #pragma acc loop vector reduction(+:sum0,sum1,sum2,sum3,sum4)
       for (k = 1; k <= nz0-2; k++) {
 	  sum0 = sum0 + v[i][j][k][0] * v[i][j][k][0];
 	  sum1 = sum1 + v[i][j][k][1] * v[i][j][k][1];
@@ -1917,6 +1930,7 @@ c  local variables
       }
     }
   }
+#endif
 
   sum[0] += sum0;
   sum[1] += sum1;
@@ -2938,7 +2952,7 @@ c  local variables
   int i, j, k, m;
   int istep;
   double  tmp;
-  double  delunm[5], tv[ISIZ1][ISIZ2][5];
+  double  delunm[5];
 
 /*--------------------------------------------------------------------
 c   begin pseudo-time stepping iterations
@@ -3030,7 +3044,7 @@ c   perform the upper triangular solution
 --------------------------------------------------------------------*/
       buts(nx, ny, nz, k,
 	   omega,
-	   rsd, tv,
+       rsd,
 	   d, a, b, c,
 	   ist, iend, jst, jend,
 	   nx0, ny0 );
