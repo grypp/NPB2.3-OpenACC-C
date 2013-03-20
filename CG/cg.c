@@ -153,6 +153,10 @@ c-------------------------------------------------------------------*/
     amult   = 1220703125.0;
     zeta    = randlc( &tran, amult );
 
+#pragma acc data create(colidx,rowstr,iv,arow,acol) \
+    create(v,aelt,a,x,z,p,q,r,w)
+{
+
 /*--------------------------------------------------------------------
 c  
 c-------------------------------------------------------------------*/
@@ -168,7 +172,7 @@ c        So:
 c        Shift the col index vals from actual (firstcol --> lastcol ) 
 c        to local, i.e., (1 --> lastcol-firstcol+1)
 c---------------------------------------------------------------------*/
-    #pragma acc kernels create(colidx)
+    #pragma acc kernels copyin(colidx,rowstr)
     for (j = 1; j <= lastrow - firstrow + 1; j++) {
 	for (k = rowstr[j]; k < rowstr[j+1]; k++) {
             colidx[k] = colidx[k] - firstcol + 1;
@@ -178,7 +182,7 @@ c---------------------------------------------------------------------*/
 /*--------------------------------------------------------------------
 c  set starting vector to (1, 1, .... 1)
 c-------------------------------------------------------------------*/
-    #pragma acc kernels create(x)
+    #pragma acc kernels present(x)
     for (i = 1; i <= NA+1; i++) {
 	x[i] = 1.0;
     }
@@ -292,6 +296,8 @@ c-------------------------------------------------------------------*/
 
     timer_stop( 1 );
 
+} /* end acc data */
+
 /*--------------------------------------------------------------------
 c  End of timed section
 c-------------------------------------------------------------------*/
@@ -363,9 +369,7 @@ c---------------------------------------------------------------------*/
 /*--------------------------------------------------------------------
 c  Initialize the CG algorithm:
 c-------------------------------------------------------------------*/
-    #pragma acc kernels \
-        present_or_create(q,z,r,p,w) \
-        present_or_copy(x)
+    #pragma acc kernels present(q,z,r,p,w) copyin(x[NA+2+1])
     for (j = 1; j <= naa+1; j++) {
 	q[j] = 0.0;
 	z[j] = 0.0;
@@ -408,7 +412,7 @@ C        on the Cray t3d - overall speed of code is 1.5 times faster.
 */
 
 /* rolled version */      
-    #pragma acc kernels present(w,colidx) present_or_copyin(rowstr)
+    #pragma acc kernels present(w,colidx,rowstr)
 	for (j = 1; j <= lastrow-firstrow+1; j++) {
             sum = 0.0;
         //#pragma acc parallel loop vector reduction(+:sum)
@@ -475,8 +479,7 @@ c-------------------------------------------------------------------*/
 /*--------------------------------------------------------------------
 c  Obtain p.q
 c-------------------------------------------------------------------*/
-    #pragma acc parallel loop vector reduction(+:d)
-        present(p,q)
+    #pragma acc parallel loop vector reduction(+:d) present(p,q)
 	for (j = 1; j <= lastcol-firstcol+1; j++) {
             d = d + p[j]*q[j];
 	}
@@ -619,7 +622,6 @@ c-------------------------------------------------------------------*/
 c  Initialize colidx(n+1 .. 2n) to zero.
 c  Used by sprnvc to mark nonzero positions
 c---------------------------------------------------------------------*/
-    #pragma acc kernels create(colidx)
     for (i = 1; i <= n; i++) {
 	colidx[n+i] = 0;
     }
@@ -676,6 +678,7 @@ c---------------------------------------------------------------------*/
 c       ... make the sparse matrix from list of elements with duplicates
 c           (v and iv are used as  workspace)
 c---------------------------------------------------------------------*/
+    //#pragma acc data copyin(colidx,arow,acol,aelt,v,iv)
     sparse(a, colidx, rowstr, n, arow, acol, aelt,
 	   firstrow, lastrow, v, &(iv[0]), &(iv[n]), nnza);
 }
@@ -715,21 +718,23 @@ c-------------------------------------------------------------------*/
 /*--------------------------------------------------------------------
 c     ...count the number of triples in each row
 c-------------------------------------------------------------------*/     
-    #pragma acc kernels create(rowstr,mark)
+    //#pragma acc kernels present(rowstr,mark)
+    /* mark is subarray of iv */
     for (j = 1; j <= n+1; j++) {
         rowstr[j] = 0;
         if (j<=n) mark[j] = FALSE;
     }
     
-    #pragma acc kernels copyin(arow)
+    //#pragma acc kernels present(rowstr,arow)
     for (nza = 1; nza <= nnza; nza++) {
 	j = (arow[nza] - firstrow + 1) + 1;
 	rowstr[j] = rowstr[j] + 1;
     }
 
-    rowstr[1] = 1;
+    //#pragma acc kernels present(rowstr)
     for (j = 2; j <= nrows+1; j++) {
-	rowstr[j] = rowstr[j] + rowstr[j-1];
+    if (j == 1) rowstr[1] = 1;
+    else rowstr[j] = rowstr[j] + rowstr[j-1];
     }
 
 /*---------------------------------------------------------------------
@@ -740,6 +745,7 @@ c---------------------------------------------------------------------*/
 /*--------------------------------------------------------------------
 c     ... do a bucket sort of the triples on the row index
 c-------------------------------------------------------------------*/
+    //#pragma acc kernels present(arow,rowstr,a,aelt,colidx,acol)
     for (nza = 1; nza <= nnza; nza++) {
 	j = arow[nza] - firstrow + 1;
 	k = rowstr[j];
@@ -751,16 +757,17 @@ c-------------------------------------------------------------------*/
 /*--------------------------------------------------------------------
 c       ... rowstr(j) now points to the first element of row j+1
 c-------------------------------------------------------------------*/
+    //#pragma acc kernels present(rowstr)
     for (j = nrows; j >= 1; j--) {
 	rowstr[j+1] = rowstr[j];
+    if (j == 1) rowstr[1] = 1;
     }
-    rowstr[1] = 1;
 
 /*--------------------------------------------------------------------
 c       ... generate the actual output rows by adding elements
 c-------------------------------------------------------------------*/
     nza = 0;
-    #pragma acc kernels present_or_create(x,mark)
+    //#pragma acc kernels present(x,mark) cpoyout(rowstr[1:1])
     for (i = 1; i <= n; i++) {
 	x[i] = 0.0;
 	mark[i] = FALSE;
@@ -773,6 +780,7 @@ c-------------------------------------------------------------------*/
 /*--------------------------------------------------------------------
 c          ...loop over the jth row of a
 c-------------------------------------------------------------------*/
+    //#pragma acc kernels loop seq present(colidx,mark)
 	for (k = jajp1; k < rowstr[j+1]; k++) {
             i = colidx[k];
             x[i] = x[i] + a[k];

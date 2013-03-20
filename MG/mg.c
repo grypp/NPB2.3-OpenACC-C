@@ -585,14 +585,15 @@ c-------------------------------------------------------------------*/
     } else {
         d3 = 1;
     }
-    #pragma acc kernels create(x1, y1) present(r)
+    #pragma acc kernels create(x1, y1) present(r, s)
     for (j3 = 1; j3 < m3j-1; j3++) {
 	i3 = 2*j3-d3;
 /*C        i3 = 2*j3-1*/
+       #pragma acc loop seq
 	for (j2 = 1; j2 < m2j-1; j2++) {
             i2 = 2*j2-d2;
 /*C           i2 = 2*j2-1*/
-
+            #pragma acc loop seq
             for (j1 = 1; j1 < m1j; j1++) {
 		i1 = 2*j1-d1;
 /*C             i1 = 2*j1-1*/
