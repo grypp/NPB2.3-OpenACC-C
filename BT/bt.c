@@ -81,7 +81,7 @@ c      Root node reads input file (if it exists) else takes
 c      defaults from parameters
 c-------------------------------------------------------------------*/
 
-  printf("\n\n NAS Parallel Benchmarks 2.3 OpenMP C version"
+  printf("\n\n NAS Parallel Benchmarks 2.3 OpenACC C version"
 	 " - BT Benchmark\n\n");
 
   fp = fopen("inputbt.data", "r");
@@ -118,10 +118,10 @@ c-------------------------------------------------------------------*/
 
   set_constants();
 
-  #pragma acc data create(u,ue,forcing,cuf,buf,q) \
-    create(us,vs,ws,qs,rho_i,square,lhs,rhs,fjac,njac) \
-    copyin(grid_points,ce)
-  {
+#pragma acc data create(u,ue,forcing,cuf,buf,q) \
+  create(us,vs,ws,qs,rho_i,square,lhs,rhs,fjac,njac) \
+  copyin(grid_points,ce)
+{
   initialize();
 
   lhsinit();
@@ -148,12 +148,12 @@ c-------------------------------------------------------------------*/
     adi();
   }
 
-  } /* end pragma acc data */
-
   timer_stop(1);
   tmax = timer_read(1);
        
   verify(niter, &class, &verified);
+
+} /* end pragma acc data */
 
   n3 = grid_points[0]*grid_points[1]*grid_points[2];
   navg = (grid_points[0]+grid_points[1]+grid_points[2])/3.0;
@@ -231,7 +231,7 @@ c-------------------------------------------------------------------*/
       eta = (double)j * dnym1;
       for (k = 0; k < grid_points[2]; k++) {
 	zeta = (double)k * dnzm1;
-    EXACT_SOLUTION(m, xi, eta, zeta, u_exact);
+    EXACT_SOLUTION(xi, eta, zeta, u_exact);
 
 	for (m = 0; m < 5; m++) {
 	  add = u[i][j][k][m] - u_exact[m];
@@ -316,18 +316,20 @@ c-------------------------------------------------------------------*/
 /*--------------------------------------------------------------------
 c     xi-direction flux differences                      
 c-------------------------------------------------------------------*/
-  #pragma acc kernels present(ue, cuf, buf, q, grid_points, forcing) \
+  #pragma acc parallel loop present(ue, cuf, buf, q, grid_points, forcing) \
     present_or_create(dtemp)
   for (j = 1; j < grid_points[1]-1; j++) {
     eta = (double)j * dnym1;
     
+    #pragma acc loop
     for (k = 1; k < grid_points[2]-1; k++) {
       zeta = (double)k * dnzm1;
 
+      #pragma acc loop
       for (i = 0; i < grid_points[0]; i++) {
 	xi = (double)i * dnxm1;
 
-    EXACT_SOLUTION(m, xi, eta, zeta, dtemp);
+    EXACT_SOLUTION(xi, eta, zeta, dtemp);
 	for (m = 0; m < 5; m++) {
 	  ue[i][m] = dtemp[m];
 	}
@@ -416,18 +418,20 @@ c-------------------------------------------------------------------*/
 /*--------------------------------------------------------------------
 c     eta-direction flux differences             
 c-------------------------------------------------------------------*/
-  #pragma acc kernels present(ue, cuf, buf, q, grid_points, forcing) \
+  #pragma acc parallel loop present(ue, cuf, buf, q, grid_points, forcing) \
     present_or_create(dtemp)
   for (i = 1; i < grid_points[0]-1; i++) {
     xi = (double)i * dnxm1;
     
+    #pragma acc loop
     for (k = 1; k < grid_points[2]-1; k++) {
       zeta = (double)k * dnzm1;
 
+      #pragma acc loop
       for (j = 0; j < grid_points[1]; j++) {
 	eta = (double)j * dnym1;
 
-    EXACT_SOLUTION(m, xi, eta, zeta, dtemp);
+    EXACT_SOLUTION(xi, eta, zeta, dtemp);
 	for (m = 0; m < 5; m++) {
 	  ue[j][m] = dtemp[m];
 	}
@@ -517,18 +521,20 @@ c-------------------------------------------------------------------*/
 /*--------------------------------------------------------------------
 c     zeta-direction flux differences                      
 c-------------------------------------------------------------------*/
-  #pragma acc kernels present(ue, cuf, buf, q, grid_points, forcing) \
+  #pragma acc parallel loop present(ue, cuf, buf, q, grid_points, forcing) \
     present_or_create(dtemp)
   for (i = 1; i < grid_points[0]-1; i++) {
     xi = (double)i * dnxm1;
     
+    #pragma acc loop
     for (j = 1; j < grid_points[1]-1; j++) {
       eta = (double)j * dnym1;
 
+      #pragma acc loop
       for (k = 0; k < grid_points[2]; k++) {
 	zeta = (double)k * dnzm1;
 
-    EXACT_SOLUTION(m, xi, eta, zeta, dtemp);
+    EXACT_SOLUTION(xi, eta, zeta, dtemp);
 	for (m = 0; m < 5; m++) {
 	  ue[k][m] = dtemp[m];
 	}
@@ -666,29 +672,31 @@ c-------------------------------------------------------------------*/
 c     first store the "interpolated" values everywhere on the grid    
 c-------------------------------------------------------------------*/
 
-  #pragma acc kernels present(u,grid_points) \
+  #pragma acc parallel loop present(u,grid_points) \
     present_or_create(Pface)
   for (i = 0; i < grid_points[0]; i++) {
     xi = (double)i * dnxm1;
     
+    #pragma acc loop
     for (j = 0; j < grid_points[1]; j++) {
       eta = (double)j * dnym1;
       
+      #pragma acc loop
       for (k = 0; k < grid_points[2]; k++) {
 	zeta = (double)k * dnzm1;
                   
 	for (ix = 0; ix < 2; ix++) {
-      EXACT_SOLUTION(m, (double)ix, eta, zeta,
+      EXACT_SOLUTION((double)ix, eta, zeta,
                          &(Pface[ix][0][0]));
 	}
 
 	for (iy = 0; iy < 2; iy++) {
-      EXACT_SOLUTION(m, xi, (double)iy , zeta,
+      EXACT_SOLUTION(xi, (double)iy , zeta,
                          &Pface[iy][1][0]);
 	}
 
 	for (iz = 0; iz < 2; iz++) {
-      EXACT_SOLUTION(m, xi, eta, (double)iz,
+      EXACT_SOLUTION(xi, eta, (double)iz,
                          &Pface[iz][2][0]);
 	}
 
@@ -717,13 +725,14 @@ c     west face
 c-------------------------------------------------------------------*/
   i = 0;
   xi = 0.0;
-  #pragma acc kernels present(u,grid_points) \
+  #pragma acc parallel loop present(u,grid_points) \
     present_or_create(temp)
   for (j = 0; j < grid_points[1]; j++) {
     eta = (double)j * dnym1;
+    #pragma acc loop
     for (k = 0; k < grid_points[2]; k++) {
       zeta = (double)k * dnzm1;
-      EXACT_SOLUTION(m, xi, eta, zeta, temp);
+      EXACT_SOLUTION(xi, eta, zeta, temp);
       for (m = 0; m < 5; m++) {
 	u[i][j][k][m] = temp[m];
       }
@@ -736,13 +745,14 @@ c-------------------------------------------------------------------*/
 
   i = grid_points[0]-1;
   xi = 1.0;
-  #pragma acc kernels present(u,grid_points) \
+  #pragma acc parallel loop present(u,grid_points) \
     present_or_create(temp)
   for (j = 0; j < grid_points[1]; j++) {
     eta = (double)j * dnym1;
+    #pragma acc loop
     for (k = 0; k < grid_points[2]; k++) {
       zeta = (double)k * dnzm1;
-      EXACT_SOLUTION(m, xi, eta, zeta, temp);
+      EXACT_SOLUTION(xi, eta, zeta, temp);
       for (m = 0; m < 5; m++) {
 	u[i][j][k][m] = temp[m];
       }
@@ -754,13 +764,14 @@ c     south face
 c-------------------------------------------------------------------*/
   j = 0;
   eta = 0.0;
-  #pragma acc kernels present(u,grid_points) \
+  #pragma acc parallel loop present(u,grid_points) \
     present_or_create(temp)
   for (i = 0; i < grid_points[0]; i++) {
     xi = (double)i * dnxm1;
+    #pragma acc loop
     for (k = 0; k < grid_points[2]; k++) {
       zeta = (double)k * dnzm1;
-      EXACT_SOLUTION(m, xi, eta, zeta, temp);
+      EXACT_SOLUTION(xi, eta, zeta, temp);
       for (m = 0; m < 5; m++) {
 	u[i][j][k][m] = temp[m];
       }
@@ -772,13 +783,14 @@ c     north face
 c-------------------------------------------------------------------*/
   j = grid_points[1]-1;
   eta = 1.0;
-  #pragma acc kernels present(u,grid_points) \
+  #pragma acc parallel loop present(u,grid_points) \
     present_or_create(temp)
   for (i = 0; i < grid_points[0]; i++) {
     xi = (double)i * dnxm1;
+    #pragma acc loop
     for (k = 0; k < grid_points[2]; k++) {
       zeta = (double)k * dnzm1;
-      EXACT_SOLUTION(m, xi, eta, zeta, temp);
+      EXACT_SOLUTION(xi, eta, zeta, temp);
       for (m = 0; m < 5; m++) {
 	u[i][j][k][m] = temp[m];
       }
@@ -790,13 +802,14 @@ c     bottom face
 c-------------------------------------------------------------------*/
   k = 0;
   zeta = 0.0;
-  #pragma acc kernels present(u,grid_points) \
+  #pragma acc parallel loop present(u,grid_points) \
     present_or_create(temp)
   for (i = 0; i < grid_points[0]; i++) {
     xi = (double)i *dnxm1;
+    #pragma acc loop
     for (j = 0; j < grid_points[1]; j++) {
       eta = (double)j * dnym1;
-      EXACT_SOLUTION(m, xi, eta, zeta, temp);
+      EXACT_SOLUTION(xi, eta, zeta, temp);
       for (m = 0; m < 5; m++) {
 	u[i][j][k][m] = temp[m];
       }
@@ -808,13 +821,14 @@ c     top face
 c-------------------------------------------------------------------*/
   k = grid_points[2]-1;
   zeta = 1.0;
-  #pragma acc kernels present(u,grid_points) \
+  #pragma acc parallel loop present(u,grid_points) \
     present_or_create(temp)
   for (i = 0; i < grid_points[0]; i++) {
     xi = (double)i * dnxm1;
+    #pragma acc loop
     for (j = 0; j < grid_points[1]; j++) {
       eta = (double)j * dnym1;
-      EXACT_SOLUTION(m, xi, eta, zeta, temp);
+      EXACT_SOLUTION(xi, eta, zeta, temp);
       for (m = 0; m < 5; m++) {
 	u[i][j][k][m] = temp[m];
       }
@@ -887,9 +901,9 @@ c-------------------------------------------------------------------*/
     for (k = 1; k < grid_points[2]-1; k++) {
       for (i = 0; i < grid_points[0]; i++) {
 
-	tmp1 = 1.0 / u[i][j][k][0];
-	tmp2 = tmp1 * tmp1;
-	tmp3 = tmp1 * tmp2;
+	double tmp1 = 1.0 / u[i][j][k][0];
+	double tmp2 = tmp1 * tmp1;
+	double tmp3 = tmp1 * tmp2;
 /*--------------------------------------------------------------------
 c     
 c-------------------------------------------------------------------*/
@@ -980,8 +994,8 @@ c     now jacobians set, so form left hand side in x direction
 c-------------------------------------------------------------------*/
       for (i = 1; i < grid_points[0]-1; i++) {
 
-	tmp1 = dt * tx1;
-	tmp2 = dt * tx2;
+	double tmp1 = dt * tx1;
+	double tmp2 = dt * tx2;
 
 	lhs[i][j][k][AA][0][0] = - tmp2 * fjac[i-1][j][k][0][0]
 	  - tmp1 * njac[i-1][j][k][0][0]
@@ -1171,9 +1185,9 @@ c-------------------------------------------------------------------*/
     for (j = 0; j < grid_points[1]; j++) {
       for (k = 1; k < grid_points[2]-1; k++) {
 
-	tmp1 = 1.0 / u[i][j][k][0];
-	tmp2 = tmp1 * tmp1;
-	tmp3 = tmp1 * tmp2;
+	double tmp1 = 1.0 / u[i][j][k][0];
+	double tmp2 = tmp1 * tmp1;
+	double tmp3 = tmp1 * tmp2;
 
 	fjac[ i][ j][ k][0][0] = 0.0;
 	fjac[ i][ j][ k][0][1] = 0.0;
@@ -1273,8 +1287,8 @@ c-------------------------------------------------------------------*/
     for (j = 1; j < grid_points[1]-1; j++) {
       for (k = 1; k < grid_points[2]-1; k++) {
 
-	tmp1 = dt * ty1;
-	tmp2 = dt * ty2;
+	double tmp1 = dt * ty1;
+	double tmp2 = dt * ty2;
 
 	lhs[i][j][k][AA][0][0] = - tmp2 * fjac[i][j-1][k][0][0]
 	  - tmp1 * njac[i][j-1][k][0][0]
@@ -1465,9 +1479,9 @@ c---------------------------------------------------------------------*/
     for (j = 1; j < grid_points[1]-1; j++) {
       for (k = 0; k < grid_points[2]; k++) {
 
-	tmp1 = 1.0 / u[i][j][k][0];
-	tmp2 = tmp1 * tmp1;
-	tmp3 = tmp1 * tmp2;
+	double tmp1 = 1.0 / u[i][j][k][0];
+	double tmp2 = tmp1 * tmp1;
+	double tmp3 = tmp1 * tmp2;
 
 	fjac[i][j][k][0][0] = 0.0;
 	fjac[i][j][k][0][1] = 0.0;
@@ -1566,8 +1580,8 @@ c-------------------------------------------------------------------*/
     for (j = 1; j < grid_points[1]-1; j++) {
       for (k = 1; k < grid_points[2]-1; k++) {
 
-	tmp1 = dt * tz1;
-	tmp2 = dt * tz2;
+	double tmp1 = dt * tz1;
+	double tmp2 = dt * tz2;
 
 	lhs[i][j][k][AA][0][0] = - tmp2 * fjac[i][j][k-1][0][0]
 	  - tmp1 * njac[i][j][k-1][0][0]
@@ -2669,7 +2683,7 @@ c-------------------------------------------------------------------*/
   int i, j, k, m, n;
 
   for (i = grid_points[0]-2; i >= 0; i--) {
-    #pragma acc kernels present(lhs,rhs,grid_points)
+    #pragma acc parallel loop collapse(4) present(lhs,rhs,grid_points)
     for (j = 1; j < grid_points[1]-1; j++) {
       for (k = 1; k < grid_points[2]-1; k++) {
 	for (m = 0; m < BLOCK_SIZE; m++) {
@@ -2724,14 +2738,15 @@ c     begin inner most do loop
 c     do all the elements of the cell unless last 
 c-------------------------------------------------------------------*/
   for (i = 1; i < isize; i++) {
-    #pragma acc kernels present(lhs,rhs,grid_points)
+    // TODO: this can be parallelize but pgcc cannot
+    #pragma acc parallel loop collapse(2) present(lhs,rhs,grid_points)
     for (j = 1; j < grid_points[1]-1; j++) {
       for (k = 1; k < grid_points[2]-1; k++) {
 
 /*--------------------------------------------------------------------
 c     rhs(i) = rhs(i) - A*rhs(i-1)
 c-------------------------------------------------------------------*/
-	matvec_sub(lhs[i][j][k][AA],
+	MATVEC_SUB(lhs[i][j][k][AA],
 		   rhs[i-1][j][k], rhs[i][j][k]);
 
 /*--------------------------------------------------------------------
@@ -2754,7 +2769,7 @@ c-------------------------------------------------------------------*/
     }
   }
 
-  #pragma acc kernels present(lhs,rhs) present_or_copyin(grid_points)
+  #pragma acc parallel loop collapse(2) present(lhs,rhs) present_or_copyin(grid_points)
   for (j = 1; j < grid_points[1]-1; j++) {
     for (k = 1; k < grid_points[2]-1; k++) {
 
@@ -2774,7 +2789,7 @@ c-------------------------------------------------------------------*/
 /*--------------------------------------------------------------------
 c     multiply rhs() by b_inverse() and copy to rhs
 c-------------------------------------------------------------------*/
-      binvrhs( lhs[i][j][k][BB],
+      BINVRHS( lhs[i][j][k][BB],
 	       rhs[i][j][k] );
 
     }
@@ -2823,7 +2838,7 @@ c-------------------------------------------------------------------*/
   int i, j, k, m, n;
       
   for (j = grid_points[1]-2; j >= 0; j--) {
-    #pragma acc kernels present(lhs,rhs,grid_points)
+    #pragma acc parallel loop collapse(4) present(lhs,rhs,grid_points)
     for (i = 1; i < grid_points[0]-1; i++) {
       for (k = 1; k < grid_points[2]-1; k++) {
 	for (m = 0; m < BLOCK_SIZE; m++) {
@@ -2878,7 +2893,7 @@ c     begin inner most do loop
 c     do all the elements of the cell unless last 
 c-------------------------------------------------------------------*/
   for (j = 1; j < jsize; j++) {
-    #pragma acc kernels present(lhs,rhs,grid_points)
+    #pragma acc parallel loop collapse(2) present(lhs,rhs,grid_points)
     for (i = 1; i < grid_points[0]-1; i++) {
       for (k = 1; k < grid_points[2]-1; k++) {
 
@@ -2909,7 +2924,7 @@ c-------------------------------------------------------------------*/
     }
   }
 
-  #pragma acc kernels present(lhs,rhs,grid_points)
+  #pragma acc parallel loop collapse(2) present(lhs,rhs,grid_points)
   for (i = 1; i < grid_points[0]-1; i++) {
     for (k = 1; k < grid_points[2]-1; k++) {
 
@@ -2979,16 +2994,16 @@ c-------------------------------------------------------------------*/
 
   int i, j, k, m, n;
 
-  #pragma acc kernels present(lhs,rhs,grid_points)
-  for (i = 1; i < grid_points[0]-1; i++) {
-    for (j = 1; j < grid_points[1]-1; j++) {
-      for (k = grid_points[2]-2; k >= 0; k--) {
-	for (m = 0; m < BLOCK_SIZE; m++) {
+  for (k = grid_points[2]-2; k >= 0; k--) {
+    #pragma acc parallel loop collapse(4) present(lhs,rhs,grid_points)
+    for (i = 1; i < grid_points[0]-1; i++) {
+      for (j = 1; j < grid_points[1]-1; j++) {  
+	 for (m = 0; m < BLOCK_SIZE; m++) {
 	  for (n = 0; n < BLOCK_SIZE; n++) {
 	    rhs[i][j][k][m] = rhs[i][j][k][m] 
 	      - lhs[i][j][k][CC][m][n]*rhs[i][j][k+1][n];
 	  }
-	}
+	 }
       }
     }
   }
@@ -3039,7 +3054,7 @@ c     begin inner most do loop
 c     do all the elements of the cell unless last 
 c-------------------------------------------------------------------*/
   for (k = 1; k < ksize; k++) {
-      #pragma acc kernels present(lhs,rhs,grid_points)
+      #pragma acc parallel loop collapse(2) present(lhs,rhs,grid_points)
       for (i = 1; i < grid_points[0]-1; i++) {
 	  for (j = 1; j < grid_points[1]-1; j++) {
 
@@ -3074,7 +3089,7 @@ c-------------------------------------------------------------------*/
 /*--------------------------------------------------------------------
 c     Now finish up special cases for last cell
 c-------------------------------------------------------------------*/
-  #pragma acc kernels present(lhs,rhs,grid_points)
+  #pragma acc parallel loop collapse(2) present(lhs,rhs,grid_points)
   for (i = 1; i < grid_points[0]-1; i++) {
     for (j = 1; j < grid_points[1]-1; j++) {
 

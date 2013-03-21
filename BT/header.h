@@ -84,14 +84,13 @@ static double fjac[IMAX/2*2+1][JMAX/2*2+1][KMAX-1+1][5][5];
 /* fjac(5, 5, 0:IMAX/2*2, 0:JMAX/2*2, 0:KMAX-1) */
 static double njac[IMAX/2*2+1][JMAX/2*2+1][KMAX-1+1][5][5];
 /* njac(5, 5, 0:IMAX/2*2, 0:JMAX/2*2, 0:KMAX-1) */
-static double tmp1, tmp2, tmp3;
 
-/* MACRO function */
-static int msi;
-static double pivot, coeff;
 
 /* this function returns the exact solution at point xi, eta, zeta */
-#define EXACT_SOLUTION(m,xi,eta,zeta,dtemp) \
+#define EXACT_SOLUTION(xi,eta,zeta,dtemp) \
+{ \
+    int m; \
+ \
     for (m = 0; m < 5; m++) { \
       (dtemp)[m] =  ce[m][0] + \
         xi*(ce[m][1] + xi*(ce[m][4] + xi*(ce[m][7] \
@@ -100,7 +99,8 @@ static double pivot, coeff;
                          + eta*ce[m][11])))+ \
         zeta*(ce[m][3] + zeta*(ce[m][6] + zeta*(ce[m][9] + \
                             zeta*ce[m][12]))); \
-    }
+    } \
+}
 
 /* subtracts bvec=bvec - ablock*avec */
 /*--------------------------------------------------------------------
@@ -108,45 +108,56 @@ c            rhs(i,ic,jc,kc,ccell) = rhs(i,ic,jc,kc,ccell)
 c     $           - lhs[i,1,ablock,ia,ja,ka,acell)*
 c-------------------------------------------------------------------*/
 #define MATVEC_SUB(ablock,avec,bvec) \
-  for (msi = 0; msi < 5; msi++) { \
-    bvec[msi] = bvec[msi] - ablock[msi][0]*avec[0] \
-      - ablock[msi][1]*avec[1] \
-      - ablock[msi][2]*avec[2] \
-      - ablock[msi][3]*avec[3] \
-      - ablock[msi][4]*avec[4]; \
-  }
+{ \
+  int i; \
+ \
+  for (i = 0; i < 5; i++) { \
+    bvec[i] = bvec[i] - ablock[i][0]*avec[0] \
+      - ablock[i][1]*avec[1] \
+      - ablock[i][2]*avec[2] \
+      - ablock[i][3]*avec[3] \
+      - ablock[i][4]*avec[4]; \
+  } \
+}
 
 /* subtracts a(i,j,k) X b(i,j,k) from c(i,j,k) */
 #define MATMUL_SUB(ablock,bblock,cblock) \
-  for (msi = 0; msi < 5; msi++) { \
-    cblock[0][msi] = cblock[0][msi] - ablock[0][0]*bblock[0][msi] \
-      - ablock[0][1]*bblock[1][msi] \
-      - ablock[0][2]*bblock[2][msi] \
-      - ablock[0][3]*bblock[3][msi] \
-      - ablock[0][4]*bblock[4][msi]; \
-    cblock[1][msi] = cblock[1][msi] - ablock[1][0]*bblock[0][msi] \
-      - ablock[1][1]*bblock[1][msi] \
-      - ablock[1][2]*bblock[2][msi] \
-      - ablock[1][3]*bblock[3][msi] \
-      - ablock[1][4]*bblock[4][msi]; \
-    cblock[2][msi] = cblock[2][msi] - ablock[2][0]*bblock[0][msi] \
-      - ablock[2][1]*bblock[1][msi] \
-      - ablock[2][2]*bblock[2][msi] \
-      - ablock[2][3]*bblock[3][msi] \
-      - ablock[2][4]*bblock[4][msi]; \
-    cblock[3][msi] = cblock[3][msi] - ablock[3][0]*bblock[0][msi] \
-      - ablock[3][1]*bblock[1][msi] \
-      - ablock[3][2]*bblock[2][msi] \
-      - ablock[3][3]*bblock[3][msi] \
-      - ablock[3][4]*bblock[4][msi]; \
-    cblock[4][msi] = cblock[4][msi] - ablock[4][0]*bblock[0][msi] \
-      - ablock[4][1]*bblock[1][msi] \
-      - ablock[4][2]*bblock[2][msi] \
-      - ablock[4][3]*bblock[3][msi] \
-      - ablock[4][4]*bblock[4][msi]; \
-  }
+{ \
+  int i; \
+ \
+  for (i = 0; i < 5; i++) { \
+    cblock[0][i] = cblock[0][i] - ablock[0][0]*bblock[0][i] \
+      - ablock[0][1]*bblock[1][i] \
+      - ablock[0][2]*bblock[2][i] \
+      - ablock[0][3]*bblock[3][i] \
+      - ablock[0][4]*bblock[4][i]; \
+    cblock[1][i] = cblock[1][i] - ablock[1][0]*bblock[0][i] \
+      - ablock[1][1]*bblock[1][i] \
+      - ablock[1][2]*bblock[2][i] \
+      - ablock[1][3]*bblock[3][i] \
+      - ablock[1][4]*bblock[4][i]; \
+    cblock[2][i] = cblock[2][i] - ablock[2][0]*bblock[0][i] \
+      - ablock[2][1]*bblock[1][i] \
+      - ablock[2][2]*bblock[2][i] \
+      - ablock[2][3]*bblock[3][i] \
+      - ablock[2][4]*bblock[4][i]; \
+    cblock[3][i] = cblock[3][i] - ablock[3][0]*bblock[0][i] \
+      - ablock[3][1]*bblock[1][i] \
+      - ablock[3][2]*bblock[2][i] \
+      - ablock[3][3]*bblock[3][i] \
+      - ablock[3][4]*bblock[4][i]; \
+    cblock[4][i] = cblock[4][i] - ablock[4][0]*bblock[0][i] \
+      - ablock[4][1]*bblock[1][i] \
+      - ablock[4][2]*bblock[2][i] \
+      - ablock[4][3]*bblock[3][i] \
+      - ablock[4][4]*bblock[4][i]; \
+  } \
+}
 
 #define BINVRHS(lhs,r) \
+{ \
+  static double pivot, coeff; \
+ \
   pivot = 1.00/lhs[0][0]; \
   lhs[0][1] = lhs[0][1]*pivot; \
   lhs[0][2] = lhs[0][2]*pivot; \
@@ -270,9 +281,13 @@ c-------------------------------------------------------------------*/
   r[2]   = r[2]   - coeff*r[4]; \
  \
   coeff = lhs[3][4]; \
-  r[3]   = r[3]   - coeff*r[4];
+  r[3]   = r[3]   - coeff*r[4]; \
+}
 
 #define BINVCRHS(lhs,c,r) \
+{ \
+  static double pivot, coeff; \
+ \
   pivot = 1.00/lhs[0][0]; \
   lhs[0][1] = lhs[0][1]*pivot; \
   lhs[0][2] = lhs[0][2]*pivot; \
@@ -521,6 +536,7 @@ c-------------------------------------------------------------------*/
   c[3][2] = c[3][2] - coeff*c[4][2]; \
   c[3][3] = c[3][3] - coeff*c[4][3]; \
   c[3][4] = c[3][4] - coeff*c[4][4]; \
-  r[3]   = r[3]   - coeff*r[4];
+  r[3]   = r[3]   - coeff*r[4]; \
+}
 
 
