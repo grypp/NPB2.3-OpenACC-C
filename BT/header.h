@@ -109,48 +109,48 @@ c     $           - lhs[i,1,ablock,ia,ja,ka,acell)*
 c-------------------------------------------------------------------*/
 #define MATVEC_SUB(ablock,avec,bvec) \
 { \
-  int i; \
+  int l; \
  \
-  for (i = 0; i < 5; i++) { \
-    bvec[i] = bvec[i] - ablock[i][0]*avec[0] \
-      - ablock[i][1]*avec[1] \
-      - ablock[i][2]*avec[2] \
-      - ablock[i][3]*avec[3] \
-      - ablock[i][4]*avec[4]; \
+  for (l = 0; l < 5; l++) { \
+    bvec[l] = bvec[l] - ablock[l][0]*avec[0] \
+      - ablock[l][1]*avec[1] \
+      - ablock[l][2]*avec[2] \
+      - ablock[l][3]*avec[3] \
+      - ablock[l][4]*avec[4]; \
   } \
 }
 
 /* subtracts a(i,j,k) X b(i,j,k) from c(i,j,k) */
 #define MATMUL_SUB(ablock,bblock,cblock) \
 { \
-  int i; \
+  int l; \
  \
-  for (i = 0; i < 5; i++) { \
-    cblock[0][i] = cblock[0][i] - ablock[0][0]*bblock[0][i] \
-      - ablock[0][1]*bblock[1][i] \
-      - ablock[0][2]*bblock[2][i] \
-      - ablock[0][3]*bblock[3][i] \
-      - ablock[0][4]*bblock[4][i]; \
-    cblock[1][i] = cblock[1][i] - ablock[1][0]*bblock[0][i] \
-      - ablock[1][1]*bblock[1][i] \
-      - ablock[1][2]*bblock[2][i] \
-      - ablock[1][3]*bblock[3][i] \
-      - ablock[1][4]*bblock[4][i]; \
-    cblock[2][i] = cblock[2][i] - ablock[2][0]*bblock[0][i] \
-      - ablock[2][1]*bblock[1][i] \
-      - ablock[2][2]*bblock[2][i] \
-      - ablock[2][3]*bblock[3][i] \
-      - ablock[2][4]*bblock[4][i]; \
-    cblock[3][i] = cblock[3][i] - ablock[3][0]*bblock[0][i] \
-      - ablock[3][1]*bblock[1][i] \
-      - ablock[3][2]*bblock[2][i] \
-      - ablock[3][3]*bblock[3][i] \
-      - ablock[3][4]*bblock[4][i]; \
-    cblock[4][i] = cblock[4][i] - ablock[4][0]*bblock[0][i] \
-      - ablock[4][1]*bblock[1][i] \
-      - ablock[4][2]*bblock[2][i] \
-      - ablock[4][3]*bblock[3][i] \
-      - ablock[4][4]*bblock[4][i]; \
+  for (l = 0; l < 5; l++) { \
+    cblock[0][l] = cblock[0][l] - ablock[0][0]*bblock[0][l] \
+      - ablock[0][1]*bblock[1][l] \
+      - ablock[0][2]*bblock[2][l] \
+      - ablock[0][3]*bblock[3][l] \
+      - ablock[0][4]*bblock[4][l]; \
+    cblock[1][l] = cblock[1][l] - ablock[1][0]*bblock[0][l] \
+      - ablock[1][1]*bblock[1][l] \
+      - ablock[1][2]*bblock[2][l] \
+      - ablock[1][3]*bblock[3][l] \
+      - ablock[1][4]*bblock[4][l]; \
+    cblock[2][l] = cblock[2][l] - ablock[2][0]*bblock[0][l] \
+      - ablock[2][1]*bblock[1][l] \
+      - ablock[2][2]*bblock[2][l] \
+      - ablock[2][3]*bblock[3][l] \
+      - ablock[2][4]*bblock[4][l]; \
+    cblock[3][l] = cblock[3][l] - ablock[3][0]*bblock[0][l] \
+      - ablock[3][1]*bblock[1][l] \
+      - ablock[3][2]*bblock[2][l] \
+      - ablock[3][3]*bblock[3][l] \
+      - ablock[3][4]*bblock[4][l]; \
+    cblock[4][l] = cblock[4][l] - ablock[4][0]*bblock[0][l] \
+      - ablock[4][1]*bblock[1][l] \
+      - ablock[4][2]*bblock[2][l] \
+      - ablock[4][3]*bblock[3][l] \
+      - ablock[4][4]*bblock[4][l]; \
   } \
 }
 

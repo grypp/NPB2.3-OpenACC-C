@@ -2738,7 +2738,6 @@ c     begin inner most do loop
 c     do all the elements of the cell unless last 
 c-------------------------------------------------------------------*/
   for (i = 1; i < isize; i++) {
-    // TODO: this can be parallelize but pgcc cannot
     #pragma acc parallel loop collapse(2) present(lhs,rhs,grid_points)
     for (j = 1; j < grid_points[1]-1; j++) {
       for (k = 1; k < grid_points[2]-1; k++) {
