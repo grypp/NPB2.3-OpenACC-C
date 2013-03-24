@@ -318,7 +318,7 @@ c-------------------------------------------------------------------*/
 /*--------------------------------------------------------------------
 c      xi-direction flux differences                      
 c-------------------------------------------------------------------*/
-  #pragma acc kernels create(dtemp) present(ue,buf,cuf,q,forcing,grid_points)
+  #pragma acc kernels create(dtemp) present(ce,ue,buf,cuf,q,forcing,grid_points)
   for (k = 1; k <= grid_points[2]-2; k++) {
     zeta = (double)k * dnzm1;
     for (j = 1; j <= grid_points[1]-2; j++) {
@@ -414,7 +414,7 @@ c-------------------------------------------------------------------*/
 /*--------------------------------------------------------------------
 c  eta-direction flux differences             
 c-------------------------------------------------------------------*/
-  #pragma acc kernels present(dtemp,buf,cuf,grid_points)
+  #pragma acc kernels present(ce,dtemp,buf,cuf,grid_points)
   for (k = 1; k <= grid_points[2]-2; k++) {
     zeta = (double)k * dnzm1;
     for (i = 1; i <= grid_points[0]-2; i++) {
@@ -511,7 +511,7 @@ c-------------------------------------------------------------------*/
 /*--------------------------------------------------------------------
 c      zeta-direction flux differences                      
 c-------------------------------------------------------------------*/
-  #pragma acc kernels present(ue,dtemp,buf,cuf,forcing,grid_points)
+  #pragma acc kernels present(ce,ue,dtemp,buf,cuf,forcing,grid_points)
   for (j = 1; j <= grid_points[1]-2; j++) {
     eta = (double)j * dnym1;
     for (i = 1; i <= grid_points[0]-2; i++) {
@@ -660,7 +660,7 @@ c-------------------------------------------------------------------*/
 c first store the "interpolated" values everywhere on the grid    
 c-------------------------------------------------------------------*/
 
-  #pragma acc kernels create(Pface) present(u,grid_points)
+  #pragma acc kernels create(Pface) present(ce,u,grid_points)
   for (i = 0; i <= grid_points[0]-1; i++) {
     xi = (double)i * dnxm1;
     for (j = 0; j <= grid_points[1]-1; j++) {
@@ -710,7 +710,7 @@ c-------------------------------------------------------------------*/
 
   xi = 0.0;
   i  = 0;
-  #pragma acc kernels create(temp) present(u,grid_points)
+  #pragma acc kernels create(temp) present(ce,u,grid_points)
   for (j = 0; j < grid_points[1]; j++) {
     eta = (double)j * dnym1;
     for (k = 0; k < grid_points[2]; k++) {
@@ -728,7 +728,7 @@ c-------------------------------------------------------------------*/
 
   xi = 1.0;
   i  = grid_points[0]-1;
-  #pragma acc kernels present(temp,u,grid_points)
+  #pragma acc kernels present(ce,temp,u,grid_points)
   for (j = 0; j < grid_points[1]; j++) {
     eta = (double)j * dnym1;
     for (k = 0; k < grid_points[2]; k++) {
@@ -746,7 +746,7 @@ c-------------------------------------------------------------------*/
 
   eta = 0.0;
   j   = 0;
-  #pragma acc kernels present(temp,u,grid_points)
+  #pragma acc kernels present(ce,temp,u,grid_points)
   for (i = 0; i < grid_points[0]; i++) {
     xi = (double)i * dnxm1;
     for (k = 0; k < grid_points[2]; k++) {
@@ -764,7 +764,7 @@ c-------------------------------------------------------------------*/
 
   eta = 1.0;
   j   = grid_points[1]-1;
-  #pragma acc kernels present(temp,u,grid_points)
+  #pragma acc kernels present(ce,temp,u,grid_points)
   for (i = 0; i < grid_points[0]; i++) {
     xi = (double)i * dnxm1;
     for (k = 0; k < grid_points[2]; k++) {
@@ -782,7 +782,7 @@ c-------------------------------------------------------------------*/
 
   zeta = 0.0;
   k    = 0;
-  #pragma acc kernels present(temp,u,grid_points)
+  #pragma acc kernels present(ce,temp,u,grid_points)
   for (i = 0; i < grid_points[0]; i++) {
     xi = (double)i *dnxm1;
     for (j = 0; j < grid_points[1]; j++) {
@@ -800,7 +800,7 @@ c-------------------------------------------------------------------*/
 
   zeta = 1.0;
   k    = grid_points[2]-1;
-  #pragma acc kernels present(temp,u,grid_points)
+  #pragma acc kernels present(ce,temp,u,grid_points)
   for (i = 0; i < grid_points[0]; i++) {
     xi = (double)i * dnxm1;
     for (j = 0; j < grid_points[1]; j++) {
