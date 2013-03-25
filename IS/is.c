@@ -4,18 +4,13 @@
 
   This benchmark is an OpenACC C version of the NPB IS code.
   
-  The OpenMP C versions are developed by RWCP and derived from the serial
-  Fortran versions in "NPB 2.3-serial" developed by NAS.
+  The OpenACC C versions are derived from the serial C versions in
+  "NPB 3.3-serial" and OpenMP C versions in "NPB 2.3-omp" 
+  developed by NAS.
 
   Permission to use, copy, distribute and modify this software for any
   purpose with or without fee is hereby granted.
   This software is provided "as is" without express or implied warranty.
-  
-  Send comments on the OpenMP C versions to pdp-openmp@rwcp.or.jp
-
-  Information on OpenMP activities at RWCP is available at:
-
-           http://pdplab.trc.rwcp.or.jp/pdperf/Omni/
   
   Information on NAS Parallel Benchmarks 2.3 is available at:
   
@@ -25,6 +20,7 @@
 /*--------------------------------------------------------------------
 
   Author: M. Yarrow
+          H. Jin 
 
   OpenMP C version: S. Satoh
   OpenACC C version: P. Makpaisit
@@ -34,21 +30,6 @@
 #include "npbparams.h"
 #include <stdlib.h>
 #include <stdio.h>
-
-
-/*****************************************************************/
-/* For serial IS, buckets are not really req'd to solve NPB1 IS  */
-/* spec, but their use on some machines improves performance, on */
-/* other machines the use of buckets compromises performance,    */
-/* probably because it is extra computation which is not req'd.  */
-/* (Note: Mechanism not understood, probably cache related)      */
-/* Example:  SP2-66MhzWN:  50% speedup with buckets              */
-/* Example:  SGI Indy5000: 50% slowdown with buckets             */
-/* Example:  SGI O2000:   400% slowdown with buckets (Wow!)      */
-/*****************************************************************/
-/* #define USE_BUCKETS  */
-/* buckets are not used in the OpenMP C version */
-
 
 /******************/
 /* default values */
@@ -144,11 +125,6 @@ INT_TYPE key_array[SIZE_OF_BUFFERS],
          key_buff2[SIZE_OF_BUFFERS],
          partial_verify_vals[TEST_ARRAY_SIZE];
 
-#ifdef USE_BUCKETS
-INT_TYPE bucket_size[NUM_BUCKETS],                    
-         bucket_ptrs[NUM_BUCKETS];
-#endif
-
 
 /**********************/
 /* Partial verif info */
@@ -229,9 +205,7 @@ void full_verify( void );
 /*************    portable random number generator    ************/
 /*****************************************************************/
 
-double	randlc(X, A)
-double *X;
-double *A;
+double	randlc( double *X, double *A )
 {
       static int        KS=0;
       static double	R23, R46, T23, T46;
@@ -300,7 +274,7 @@ double *A;
 void	create_seq( double seed, double a )
 {
 	double x;
-	int    i, j, k;
+	int    i, k;
 
         k = MAX_KEY/4;
 
@@ -362,71 +336,65 @@ void full_verify()
 /*************             R  A  N  K             ****************/
 /*****************************************************************/
 
-INT_TYPE	prv_buff1[MAX_KEY];
-INT_TYPE    prv_buff_tmp[MAX_KEY];
-
 void rank( int iteration )
 {
 
-    INT_TYPE    i, j, k;
-    INT_TYPE    l, m;
+    INT_TYPE    i, k;
 
     INT_TYPE    shift = MAX_KEY_LOG_2 - NUM_BUCKETS_LOG_2;
     INT_TYPE    key;
     INT_TYPE    min_key_val, max_key_val;
 
-
     key_array[iteration] = iteration;
     key_array[iteration+MAX_ITERATIONS] = MAX_KEY - iteration;
+
 
 /*  Determine where the partial verify test keys are, load into  */
 /*  top of array bucket_size                                     */
     for( i=0; i<TEST_ARRAY_SIZE; i++ )
         partial_verify_vals[i] = key_array[test_index_array[i]];
 
+    #pragma acc update device(key_array)
+
+/*  Copy key array to key_buff2 */
+    #pragma acc parallel loop present(key_array,key_buff2)
+    for( i=0; i<NUM_KEYS; i++)
+        key_buff2[i] = key_array[i];
 
 /*  Clear the work array */
-    #pragma acc kernels
+    #pragma acc parallel loop present(key_buff1)
     for( i=0; i<MAX_KEY; i++ )
         key_buff1[i] = 0;
 
-  #pragma acc kernels
-  for (i=0; i<MAX_KEY; i++)
-      prv_buff1[i] = 0;
-
-/*  Copy keys into work array; keys in key_array will be reused each iter. */
-    #pragma acc kernels copyin(key_array)
-    for( i=0; i<NUM_KEYS; i++ ) {
-        key_buff2[i] = key_array[i];
 
 /*  Ranking of all keys occurs in this section:                 */
-
+    
+    
 /*  In this section, the keys themselves are used as their 
     own indexes to determine how many of each there are: their
     individual population                                       */
+#if 0 /* To parallelize this loop OpenACC must support atomic operation */
+    #pragma acc parallel loop present(key_buff1,key_buff2)
+    for( i=0; i<NUM_KEYS; i++ )
+        #pragma acc atomic
+        key_buff1[key_buff2[i]]++;  /* Now they have individual key   */
+                                    /* population                     */
 
-        prv_buff1[key_buff2[i]]++;  /* Now they have individual key   */
-    }
-                                       /* population                     */
-    #pragma acc kernels
-    for( i=0; i<MAX_KEY; i++ ) {
-        prv_buff_tmp[i] = prv_buff1[i];
-        if ( i<MAX_KEY-1 ) prv_buff_tmp[i+1] += prv_buff1[i];
-    }
-    #pragma acc kernels
-    for( i=0; i<MAX_KEY; i++) {
-        prv_buff1[i] = prv_buff_tmp[i];
-    }
+    #pragma acc update host(key_buff1,key_buff2)
+#else
+    #pragma acc update host(key_buff1,key_buff2)
 
-
-      #pragma acc kernels copyout(key_buff1)
-	  for( i=0; i<MAX_KEY; i++ )
-	      key_buff1[i] += prv_buff1[i];
-
+    for( i=0; i<NUM_KEYS; i++ )
+        key_buff1[key_buff2[i]]++;  /* Now they have individual key   */
+                                    /* population                     */
+#endif
 
 /*  To obtain ranks of each key, successively add the individual key
     population, not forgetting to add m, the total of lesser keys,
     to the first key population                                          */
+
+    for( i=0; i<MAX_KEY-1; i++ )   
+        key_buff1[i+1] += key_buff1[i];  
 
     
 /* This is the partial verify test section */
@@ -581,7 +549,7 @@ void rank( int iteration )
 /*************             M  A  I  N             ****************/
 /*****************************************************************/
 
-main( int argc, char **argv )
+int main( int argc, char **argv )
 {
 
     int             i, iteration, itemp;
@@ -630,13 +598,11 @@ main( int argc, char **argv )
     create_seq( 314159265.00,                    /* Random number gen seed */
                 1220703125.00 );                 /* Random number gen mult */
 
-
-/*  Do one interation for free (i.e., untimed) to guarantee initialization of  
+#pragma acc data create(key_buff1, key_buff2, key_array) copyout(key_buff2)
+{
+/*  Do one interation for free (i.e., untimed) to guarantee initialization of
     all data and code pages and respective tables */
-    #pragma acc data create(key_buff1, key_buff2, prv_buff1, prv_buff_tmp)
-    {
     rank( 1 );
-    } /* end pragma acc data */
 
 /*  Start verification counter */
     passed_verification = 0;
@@ -647,8 +613,6 @@ main( int argc, char **argv )
     timer_start( 0 );
 
 
-    #pragma acc data copyout(key_buff1, key_buff2)
-    {
 /*  This is the main iteration */    
     for( iteration=1; iteration<=MAX_ITERATIONS; iteration++ )
     {
@@ -656,7 +620,7 @@ main( int argc, char **argv )
 	
         rank( iteration );
     }
-    } /* end pragma acc data */
+} /* end pragma acc data */
 
 /*  End of timing, obtain maximum time of all processors */
     timer_stop( 0 );
@@ -694,7 +658,7 @@ main( int argc, char **argv )
 		     "randlc");
 
 
-
+    return 0;
          /**************************/
 }        /*  E N D  P R O G R A M  */
          /**************************/
