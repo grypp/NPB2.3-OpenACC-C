@@ -69,10 +69,10 @@ static double rhs[IMAX/2*2+1][JMAX/2*2+1][KMAX/2*2+1][5];
 static double lhs[IMAX/2*2+1][JMAX/2*2+1][KMAX/2*2+1][3][5][5];
 
 /* COMMON block: work_1d */
-static double cuf[PROBLEM_SIZE];
+/*static double cuf[PROBLEM_SIZE];
 static double q[PROBLEM_SIZE];
 static double ue[PROBLEM_SIZE][5];
-static double buf[PROBLEM_SIZE][5];
+static double buf[PROBLEM_SIZE][5];*/
 
 /*
 c   to improve cache performance, grid dimensions (first two for these

@@ -4,18 +4,12 @@
 
   This benchmark is an OpenACC C version of the NPB EP code.
   
-  The OpenMP C versions are developed by RWCP and derived from the serial
-  Fortran versions in "NPB 2.3-serial" developed by NAS.
+  The OpenACC C versions are derived from OpenMP C versions 
+  in "NPB 2.3-omp" developed by NAS.
 
   Permission to use, copy, distribute and modify this software for any
   purpose with or without fee is hereby granted.
   This software is provided "as is" without express or implied warranty.
-  
-  Send comments on the OpenMP C versions to pdp-openmp@rwcp.or.jp
-
-  Information on OpenMP activities at RWCP is available at:
-
-           http://pdplab.trc.rwcp.or.jp/pdperf/Omni/
   
   Information on NAS Parallel Benchmarks 2.3 is available at:
   
@@ -45,14 +39,71 @@
 #define EPSILON		1.0e-8
 #define	A		1220703125.0
 #define	S		271828183.0
-#define	TIMERS_ENABLED	FALSE
 
 /* global variables */
 /* common /storage/ */
 static double x[2*NK];
 static double q[NQ];
-static double qq[NN][NQ];
+static double partial_sx[NN], partial_sy[NN];
 
+#if defined(USE_POW)
+#define r23 pow(0.5, 23.0)
+#define r46 (r23*r23)
+#define t23 pow(2.0, 23.0)
+#define t46 (t23*t23)
+#else
+#define r23 (0.5*0.5*0.5*0.5*0.5*0.5*0.5*0.5*0.5*0.5*0.5*0.5*0.5*0.5*0.5*0.5*0.5*0.5*0.5*0.5*0.5*0.5*0.5)
+#define r46 (r23*r23)
+#define t23 (2.0*2.0*2.0*2.0*2.0*2.0*2.0*2.0*2.0*2.0*2.0*2.0*2.0*2.0*2.0*2.0*2.0*2.0*2.0*2.0*2.0*2.0*2.0)
+#define t46 (t23*t23)
+#endif
+
+#define RANDLC(r,x,a) \
+{ \
+    double t1,t2,t3,t4,a1,a2,x1,x2,z; \
+ \
+    t1 = r23 * (a); \
+    a1 = (int)t1; \
+    a2 = (a) - t23 * a1; \
+\
+    t1 = r23 * (x); \
+    x1 = (int)t1; \
+    x2 = (x) - t23 * x1; \
+    t1 = a1 * x2 + a2 * x1; \
+    t2 = (int)(r23 * t1); \
+    z = t1 - t23 * t2; \
+    t3 = t23 * z + a2 * x2; \
+    t4 = (int)(r46 * t3); \
+    (x) = t3 - t46 * t4; \
+ \
+    (r) = (r46 * (x)); \
+}
+
+#define VRANLC(n,x_seed,a,y) \
+{ \
+    int i; \
+    double loc_x,loc_t1,loc_t2,loc_t3,loc_t4; \
+    double loc_a1,loc_a2,loc_x1,loc_x2,loc_z; \
+ \
+    loc_t1 = r23 * (a); \
+    loc_a1 = (int)loc_t1; \
+    loc_a2 = (a) - t23 * loc_a1; \
+    loc_x = (x_seed); \
+ \
+    for (i = 1; i <= (n); i++) { \
+        loc_t1 = r23 * loc_x; \
+        loc_x1 = (int)loc_t1; \
+        loc_x2 = loc_x - t23 * loc_x1; \
+        loc_t1 = loc_a1 * loc_x2 + loc_a2 * loc_x1; \
+        loc_t2 = (int)(r23 * loc_t1); \
+        loc_z = loc_t1 - t23 * loc_t2; \
+        loc_t3 = t23 * loc_z + loc_a2 * loc_x2; \
+        loc_t4 = (int)(r46 * loc_t3); \
+        loc_x = loc_t3 - t46 * loc_t4; \
+        y[i-1] = r46 * loc_x; \
+    } \
+    (x_seed) = loc_x; \
+}
 
 /*--------------------------------------------------------------------
       program EMBAR
@@ -70,7 +121,7 @@ int main(int argc, char **argv) {
 
     double Mops, t1, t2, t3, t4, x1, x2, sx, sy, tm, an, tt, gc;
     double dum[3] = { 1.0, 1.0, 1.0 };
-    int np, ierr, node, no_nodes, i, ik, kk, l, k, nit, ierrcode,
+    int np, nn, ierr, node, no_nodes, i, l, k, nit, ierrcode,
     no_large_nodes, np_add, k_offset, j;
     boolean verified;
     char size[13+1];	/* character*13 */
@@ -131,71 +182,87 @@ c   sure these initializations cannot be eliminated as dead code.
     sx = 0.0;
     sy = 0.0;
 
-#pragma acc data create(q,qq)
+#pragma acc data create(q,partial_sx,partial_sy)
 {
-    k_offset = -1;
 
-    #pragma acc kernels
+    #pragma acc kernels present(q)
     for ( i = 0; i <= NQ - 1; i++) {
 	q[i] = 0.0;
     }
 
-    #pragma acc kernels
-    for (k = 0; k < np; k++) {
-        for (i = 0; i < NQ; i++)
-            qq[k][i] = 0.0;
+    k_offset = -1;
+
+    #pragma acc kernels present(partial_sx,partial_sy)
+    for (nn = 0; nn < NN; nn++) {
+        partial_sx[nn] = 0.0;
+        partial_sy[nn] = 0.0;
     }
 
-    #pragma acc parallel loop vector reduction(+:sx,sy)
-    for (k = 1; k <= np; k++) {
-	kk = k_offset + k;
-	t1 = S;
-	t2 = an;
+/*      For each thread on GPU.           */
+
+    #pragma acc parallel loop present(q,partial_sx,partial_sy) \
+        reduction(sx,sy,gc)
+    for (nn = 0; nn < NN; nn++) {
+        double t1, t2, t3, t4, x1, x2;
+        double xx[2*NK], qq[NQ];
+        int kk, i, ik, l;
+
+        #pragma acc loop
+        for (i = 0; i < NQ; i++) qq[i] = 0.0;
+
+        #pragma acc loop
+        for (i = 0; i < 2*NK; i++) xx[i] = -1.0e99;
+
+/*      Distributed to threads.            */
+
+        #pragma acc loop seq
+        for (k = 1; k <= np; k+=nn) {
+      kk = k_offset + k;
+      t1 = S;
+      t2 = an;
 
 /*      Find starting seed t1 for this kk. */
 
-	for (i = 1; i <= 100; i++) {
-            ik = kk / 2;
-            if (2 * ik != kk) t3 = randlc(&t1, t2);
-            if (ik == 0) break;
-            t3 = randlc(&t2, t2);
-            kk = ik;
-	}
+      #pragma acc loop seq
+      for (i = 1; i <= 100; i++) {
+          ik = kk / 2;
+          if (2 * ik != kk) RANDLC(t3, t1, t2)
+          if (ik == 0) break;
+          RANDLC(t3, t2, t2)
+          kk = ik;
+      }
 
 /*      Compute uniform pseudorandom numbers. */
 
-	if (TIMERS_ENABLED == TRUE) timer_start(3);
-	vranlc(2*NK, &t1, A, x-1);
-	if (TIMERS_ENABLED == TRUE) timer_stop(3);
+      VRANLC(2*NK, t1, A, xx)
 
 /*
 c       Compute Gaussian deviates by acceptance-rejection method and 
 c       tally counts in concentric square annuli.  This loop is not 
 c       vectorizable.
 */
-	if (TIMERS_ENABLED == TRUE) timer_start(2);
 
-	for ( i = 0; i < NK; i++) {
-            x1 = 2.0 * x[2*i] - 1.0;
-            x2 = 2.0 * x[2*i+1] - 1.0;
-            t1 = pow2(x1) + pow2(x2);
-            if (t1 <= 1.0) {
-		t2 = sqrt(-2.0 * log(t1) / t1);
-		t3 = (x1 * t2);				/* Xi */
-		t4 = (x2 * t2);				/* Yi */
-		l = max(fabs(t3), fabs(t4));
-        qq[k-1][l] += 1.0;				/* counts */
-		sx = sx + t3;				/* sum of Xi */
-		sy = sy + t4;				/* sum of Yi */
-            }
-	}
-	if (TIMERS_ENABLED == TRUE) timer_stop(2);
-    }
+      #pragma acc loop seq
+      for ( i = 0; i < NK; i++) {
+          x1 = 2.0 * xx[2*i] - 1.0;
+          x2 = 2.0 * xx[2*i+1] - 1.0;
+          t1 = pow2(x1) + pow2(x2);
+          if (t1 <= 1.0) {
+            t2 = sqrt(-2.0 * log(t1) / t1);
+            t3 = (x1 * t2);             /* Xi */
+            t4 = (x2 * t2);             /* Yi */
+            l = max(fabs(t3), fabs(t4));
+            qq[l] += 1.0;                      /* counts */
+            partial_sx[nn] = partial_sx[nn] + t3;  /* sum of Xi */
+            partial_sy[nn] = partial_sy[nn] + t4;               /* sum of Yi */
+          }
+      }
 
-    #pragma acc kernels loop reduction(+:gc)
-    for (i = 0; i <= NQ-1; i++) {
-        q[i] += qq[np-1][i];
-        gc = gc + q[i];
+        }
+
+      for ( i = 0; i < NQ; i++) gc += qq[i];
+      sx += partial_sx[nn];
+      sy += partial_sy[nn];
     }
 
 } /* end acc data */
@@ -249,9 +316,5 @@ c       vectorizable.
 		  verified, NPBVERSION, COMPILETIME,
 		  CS1, CS2, CS3, CS4, CS5, CS6, CS7);
 
-    if (TIMERS_ENABLED == TRUE) {
-	printf("Total time:     %f", timer_read(1));
-	printf("Gaussian pairs: %f", timer_read(2));
-	printf("Random numbers: %f", timer_read(3));
-    }
+    return 0;
 }

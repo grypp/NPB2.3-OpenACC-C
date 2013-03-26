@@ -139,6 +139,7 @@ c-------------------------------------------------------------------*/
   timer_start(1);
 
 
+  #pragma acc data copyout(u)
   for (step = 1; step <= niter; step++) {
 
     if (step%20 == 0 || step == 1) {
@@ -150,7 +151,7 @@ c-------------------------------------------------------------------*/
 
   timer_stop(1);
   tmax = timer_read(1);
-       
+
   verify(niter, &class, &verified);
 
 } /* end pragma acc data */
@@ -316,16 +317,19 @@ c-------------------------------------------------------------------*/
 /*--------------------------------------------------------------------
 c     xi-direction flux differences                      
 c-------------------------------------------------------------------*/
-  #pragma acc parallel loop present(ue, cuf, buf, q, grid_points, forcing) \
+  #pragma acc parallel loop present(grid_points,forcing) \
     present_or_create(dtemp)
   for (j = 1; j < grid_points[1]-1; j++) {
+    double cuf[PROBLEM_SIZE];
+    double q[PROBLEM_SIZE];
+    double ue[PROBLEM_SIZE][5];
+    double buf[PROBLEM_SIZE][5];
+
     eta = (double)j * dnym1;
-    
-    #pragma acc loop
+
     for (k = 1; k < grid_points[2]-1; k++) {
       zeta = (double)k * dnzm1;
 
-      #pragma acc loop
       for (i = 0; i < grid_points[0]; i++) {
 	xi = (double)i * dnxm1;
 
@@ -418,9 +422,14 @@ c-------------------------------------------------------------------*/
 /*--------------------------------------------------------------------
 c     eta-direction flux differences             
 c-------------------------------------------------------------------*/
-  #pragma acc parallel loop present(ue, cuf, buf, q, grid_points, forcing) \
+  #pragma acc parallel loop present(grid_points,forcing) \
     present_or_create(dtemp)
   for (i = 1; i < grid_points[0]-1; i++) {
+    double cuf[PROBLEM_SIZE];
+    double q[PROBLEM_SIZE];
+    double ue[PROBLEM_SIZE][5];
+    double buf[PROBLEM_SIZE][5];
+
     xi = (double)i * dnxm1;
     
     #pragma acc loop
@@ -867,7 +876,7 @@ c-------------------------------------------------------------------*/
 /*--------------------------------------------------------------------
 c     next, set all diagonal values to 1. This is overkill, but convenient
 c-------------------------------------------------------------------*/
-  #pragma acc kernels present(lhs) present_or_copyin(grid_points)
+  #pragma acc kernels present(lhs,grid_points)
   for (i = 0; i < grid_points[0]; i++) {
     for (j = 0; j < grid_points[1]; j++) {
       for (k = 0; k < grid_points[2]; k++) {
