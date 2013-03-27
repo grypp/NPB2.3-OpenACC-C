@@ -4,18 +4,12 @@
 
   This benchmark is an OpenACC C version of the NPB LU code.
   
-  The OpenMP C versions are developed by RWCP and derived from the serial
-  Fortran versions in "NPB 2.3-serial" developed by NAS.
+  The OpenACC C versions are derived from OpenMP C versions 
+  in "NPB 2.3-omp" developed by NAS.
 
   Permission to use, copy, distribute and modify this software for any
   purpose with or without fee is hereby granted.
   This software is provided "as is" without express or implied warranty.
-  
-  Send comments on the OpenMP C versions to pdp-openmp@rwcp.or.jp
-
-  Information on OpenMP activities at RWCP is available at:
-
-           http://pdplab.trc.rwcp.or.jp/pdperf/Omni/
   
   Information on NAS Parallel Benchmarks 2.3 is available at:
   
@@ -113,7 +107,6 @@ c   set up coefficients
 
 #pragma acc data create(u,rsd,frct,flux,a,b,c,d) copyin(ce) copyout(u)
 {
-
 /*--------------------------------------------------------------------
 c   set the boundary values for dependent variables
 --------------------------------------------------------------------*/
@@ -196,9 +189,11 @@ c  local variables
   double tmp, tmp1;
   double tmat[5][5];
 
-  #pragma acc kernels present(v,ldz)
+  #pragma acc parallel loop present(v,ldz)
   for (i = ist; i <= iend; i++) {
+    #pragma acc loop
     for (j = jst; j <= jend; j++) {
+      #pragma acc loop
       for (m = 0; m < 5; m++) {
 	v[i][j][k][m] = v[i][j][k][m]
 	  - omega * (  ldz[i][j][m][0] * v[i][j][k-1][0]
@@ -210,9 +205,11 @@ c  local variables
     }
   }
 
-  #pragma acc kernels present(v, ldx, ldy, d) create(tmat)
+  #pragma acc parallel loop present(v,ldx,ldy,d) create(tmat)
   for (i = ist; i <= iend; i++) {
+    #pragma acc loop
     for (j = jst; j <= jend; j++) {
+      #pragma acc loop
       for (m = 0; m < 5; m++) {
 
 	v[i][j][k][m] = v[i][j][k][m]
@@ -742,15 +739,19 @@ c   xi-direction flux differences
     }
   }
 
-  #pragma acc kernels present(frct, flux, rsd)
+  #pragma acc parallel loop present(frct, flux, rsd)
   for (j = jst; j <= jend; j++) {
+    #pragma acc loop
     for (k = 1; k <= nz - 2; k++) {
+      #pragma acc loop seq
       for (i = ist; i <= iend; i++) {
+  #pragma acc loop
 	for (m = 0; m < 5; m++) {
 	  frct[i][j][k][m] =  frct[i][j][k][m]
 	    - tx2 * ( flux[i+1][j][k][m] - flux[i-1][j][k][m] );
 	}
       }
+      #pragma acc loop seq
       for (i = ist; i <= L2; i++) {
 	tmp = 1.0 / rsd[i][j][k][0];
 
@@ -778,6 +779,7 @@ c   xi-direction flux differences
 	  + C1 * C5 * tx3 * ( u51i - u51im1 );
       }
 
+      #pragma acc loop seq
       for (i = ist; i <= iend; i++) {
 	frct[i][j][k][0] = frct[i][j][k][0]
 	  + dx1 * tx1 * (            rsd[i-1][j][k][0]
@@ -822,6 +824,7 @@ c   Fourth-order dissipation
 
       ist1 = 3;
       iend1 = nx - 4;
+      #pragma acc loop seq
       for (i = ist1; i <=iend1; i++) {
 	for (m = 0; m < 5; m++) {
 	  frct[i][j][k][m] = frct[i][j][k][m]
@@ -873,15 +876,18 @@ c   eta-direction flux differences
     }
   }
 
-  #pragma acc kernels present(frct, flux, rsd)
+  #pragma acc parallel loop present(frct, flux, rsd)
   for (i = ist; i <= iend; i++) {
+    #pragma acc loop
     for (k = 1; k <= nz - 2; k++) {
+      #pragma acc loop seq
       for (j = jst; j <= jend; j++) {
 	for (m = 0; m < 5; m++) {
 	  frct[i][j][k][m] =  frct[i][j][k][m]
 	    - ty2 * ( flux[i][j+1][k][m] - flux[i][j-1][k][m] );
 	}
       }
+      #pragma acc loop seq
       for (j = jst; j <= L2; j++) {
 	tmp = 1.0 / rsd[i][j][k][0];
 
@@ -909,6 +915,7 @@ c   eta-direction flux differences
 	  + C1 * C5 * ty3 * ( u51j - u51jm1 );
       }
 
+      #pragma acc loop seq
       for (j = jst; j <= jend; j++) {
 	frct[i][j][k][0] = frct[i][j][k][0]
 	  + dy1 * ty1 * (            rsd[i][j-1][k][0]
@@ -954,6 +961,7 @@ c   fourth-order dissipation
       jst1 = 3;
       jend1 = ny - 4;
 
+      #pragma acc loop seq
       for (j = jst1; j <= jend1; j++) {
 	for (m = 0; m < 5; m++) {
 	  frct[i][j][k][m] = frct[i][j][k][m]
@@ -1000,12 +1008,14 @@ c   zeta-direction flux differences
 	flux[i][j][k][4] = ( C1 * rsd[i][j][k][4] - C2 * q ) * u41;
       }
 
+      #pragma acc loop seq
       for (k = 1; k <= nz - 2; k++) {
 	for (m = 0; m < 5; m++) {
 	  frct[i][j][k][m] =  frct[i][j][k][m]
 	    - tz2 * ( flux[i][j][k+1][m] - flux[i][j][k-1][m] );
 	}
       }
+      #pragma acc loop seq
       for (k = 1; k <= nz-1; k++) {
 	tmp = 1.0 / rsd[i][j][k][0];
 
@@ -1033,6 +1043,7 @@ c   zeta-direction flux differences
 	  + C1 * C5 * tz3 * ( u51k - u51km1 );
       }
 
+      #pragma acc loop seq
       for (k = 1; k <= nz - 2; k++) {
 	frct[i][j][k][0] = frct[i][j][k][0]
 	  + dz1 * tz1 * (            rsd[i][j][k+1][0]
@@ -1075,6 +1086,7 @@ c   fourth-order dissipation
 		     +           rsd[i][j][4][m] );
       }
 
+      #pragma acc loop seq
       for (k = 3; k <= nz - 4; k++) {
 	for (m = 0; m < 5; m++) {
 	  frct[i][j][k][m] = frct[i][j][k][m]
@@ -1905,20 +1917,7 @@ c  local variables
     sum[m] = 0.0;
   }
 
-#ifdef _OPENACC
-  #pragma acc parallel loop present(v) reduction(+:sum0,sum1,sum2,sum3,sum4)
-  for (l = 0; l < ((iend-ist+1)*(jend-jst+1)*(nz0-2)); l++) {
-    i = l / ((jend-jst+1)*(nz0-2));
-    j = l / (nz0-2);
-    k = l % (nz0-2) + 1;
-
-    sum0 = sum0 + v[i][j][k][0] * v[i][j][k][0];
-    sum1 = sum1 + v[i][j][k][1] * v[i][j][k][1];
-    sum2 = sum2 + v[i][j][k][2] * v[i][j][k][2];
-    sum3 = sum3 + v[i][j][k][3] * v[i][j][k][3];
-    sum4 = sum4 + v[i][j][k][4] * v[i][j][k][4];
-  }
-#else
+  #pragma acc parallel loop collapse(3) reduction(+:sum0,sum1,sum2,sum3,sum4)
   for (i = ist; i <= iend; i++) {
     for (j = jst; j <= jend; j++) {
       for (k = 1; k <= nz0-2; k++) {
@@ -1930,7 +1929,6 @@ c  local variables
       }
     }
   }
-#endif
 
   sum[0] += sum0;
   sum[1] += sum1;
@@ -2296,9 +2294,10 @@ c   xi-direction flux differences
     } 
   } 
 
-  #pragma acc kernels present(rsd, flux, u)
+  #pragma acc parallel loop present(rsd, flux, u)
   for (j = jst; j <= jend; j++) {
     for (k = 1; k <= nz - 2; k++) {
+      #pragma acc loop seq
       for (i = ist; i <= iend; i++) {
 	for (m = 0; m < 5; m++) {
 	  rsd[i][j][k][m] =  rsd[i][j][k][m]
@@ -2308,6 +2307,7 @@ c   xi-direction flux differences
 
       L2 = nx-1;
 
+      #pragma acc loop seq
       for (i = ist; i <= L2; i++) {
 	tmp = 1.0 / u[i][j][k][0];
 
@@ -2334,6 +2334,7 @@ c   xi-direction flux differences
 	  + C1 * C5 * tx3 * ( u51i - u51im1 );
       }
 
+      #pragma acc loop seq
       for (i = ist; i <= iend; i++) {
 	rsd[i][j][k][0] = rsd[i][j][k][0]
 	  + dx1 * tx1 * (            u[i-1][j][k][0]
@@ -2379,6 +2380,7 @@ c   Fourth-order dissipation
       ist1 = 3;
       iend1 = nx - 4;
 
+      #pragma acc loop seq
       for (i = ist1; i <= iend1; i++) {
 	for (m = 0; m < 5; m++) {
 	  rsd[i][j][k][m] = rsd[i][j][k][m]
@@ -2432,9 +2434,10 @@ c   eta-direction flux differences
     }
   }
 
-  #pragma acc kernels present(rsd, flux, u)
+  #pragma acc parallel loop present(rsd, flux, u)
   for (i = ist; i <= iend; i++) {
     for (k = 1; k <= nz - 2; k++) {
+      #pragma acc loop seq
       for (j = jst; j <= jend; j++) {
 	for (m = 0; m < 5; m++) {
 	  rsd[i][j][k][m] =  rsd[i][j][k][m]
@@ -2443,6 +2446,7 @@ c   eta-direction flux differences
       }
 
       L2 = ny-1;
+      #pragma acc loop seq
       for (j = jst; j <= L2; j++) {
 	tmp = 1.0 / u[i][j][k][0];
 
@@ -2468,6 +2472,7 @@ c   eta-direction flux differences
 	  + C1 * C5 * ty3 * ( u51j - u51jm1 );
       }
 
+      #pragma acc loop seq
       for (j = jst; j <= jend; j++) {
 
 	rsd[i][j][k][0] = rsd[i][j][k][0]
@@ -2518,6 +2523,7 @@ c   fourth-order dissipation
 
       jst1 = 3;
       jend1 = ny - 4;
+      #pragma acc loop seq
       for (j = jst1; j <= jend1; j++) {
 	for (m = 0; m < 5; m++) {
 	  rsd[i][j][k][m] = rsd[i][j][k][m]
@@ -2546,7 +2552,7 @@ c   fourth-order dissipation
 /*--------------------------------------------------------------------
 c   zeta-direction flux differences
 --------------------------------------------------------------------*/
-  #pragma acc kernels present(rsd, flux, u)
+  #pragma acc parallel loop present(rsd, flux, u)
   for (i = ist; i <= iend; i++) {
     for (j = jst; j <= jend; j++) {
       for (k = 0; k <= nz-1; k++) {
@@ -2564,6 +2570,7 @@ c   zeta-direction flux differences
 	flux[i][j][k][4] = ( C1 * u[i][j][k][4] - C2 * q ) * u41;
       }
 
+      #pragma acc loop seq
       for (k = 1; k <= nz - 2; k++) {
 	for (m = 0; m < 5; m++) {
 	  rsd[i][j][k][m] =  rsd[i][j][k][m]
@@ -2571,6 +2578,7 @@ c   zeta-direction flux differences
 	}
       }
 
+      #pragma acc loop seq
       for (k = 1; k <= nz-1; k++) {
 	tmp = 1.0 / u[i][j][k][0];
 
@@ -2597,6 +2605,7 @@ c   zeta-direction flux differences
 	  + C1 * C5 * tz3 * ( u51k - u51km1 );
       }
 
+      #pragma acc loop seq
       for (k = 1; k <= nz - 2; k++) {
 	rsd[i][j][k][0] = rsd[i][j][k][0]
 	  + dz1 * tz1 * (            u[i][j][k-1][0]
@@ -2639,6 +2648,7 @@ c   fourth-order dissipation
 		     +           u[i][j][4][m] );
       }
 
+      #pragma acc loop seq
       for (k = 3; k <= nz - 4; k++) {
 	for (m = 0; m < 5; m++) {
 	  rsd[i][j][k][m] = rsd[i][j][k][m]
@@ -2888,26 +2898,25 @@ c   interpolation of boundary values in the computational space.
 c
 --------------------------------------------------------------------*/
 
-/*--------------------------------------------------------------------
-c  local variables
---------------------------------------------------------------------*/
-  int i, j, k, m;
-  int iglob, jglob;
-  double  xi, eta, zeta;
-  double  pxi, peta, pzeta;
-  double  ue_1jk[5],ue_nx0jk[5],ue_i1k[5],
-    ue_iny0k[5],ue_ij1[5],ue_ijnz[5];
+  int j;
 
-  #pragma acc kernels present_or_create(ue_1jk, ue_nx0jk, ue_i1k) \
-    present_or_create(ue_iny0k, ue_ij1, ue_ijnz, u) \
-    present(u)
+  #pragma acc parallel loop present(u)
   for (j = 0; j < ny; j++) {
+    int i, k, m;
+    int iglob, jglob;
+    double  xi, eta, zeta;
+    double  pxi, peta, pzeta;
+
     jglob = j;
+    #pragma acc loop seq
     for (k = 1; k < nz - 1; k++) {
       zeta = ((double)k) / (nz-1);
       if (jglob != 0 && jglob != ny0-1) {
 	eta = ( (double) (jglob) ) / (ny0-1);
+  #pragma acc loop seq
 	for (i = 0; i < nx; i++) {
+    double  ue_1jk[5],ue_nx0jk[5],ue_i1k[5],
+      ue_iny0k[5],ue_ij1[5],ue_ijnz[5];
 	  iglob = i;
 	  if(iglob != 0 && iglob != nx0-1) {
 	    xi = ( (double) (iglob) ) / (nx0-1);
