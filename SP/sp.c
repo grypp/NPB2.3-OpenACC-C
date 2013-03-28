@@ -1274,19 +1274,21 @@ c-------------------------------------------------------------------*/
   for (i = 0; i <= grid_points[0]-1; i++) {
     for (j = 0; j <= grid_points[1]-1; j++) {
       for (k = 0; k <= grid_points[2]-1; k++) {
+    double square_ijk;
 	rho_inv = 1.0/u[0][i][j][k];
 	rho_i[i][j][k] = rho_inv;
 	us[i][j][k] = u[1][i][j][k] * rho_inv;
 	vs[i][j][k] = u[2][i][j][k] * rho_inv;
 	ws[i][j][k] = u[3][i][j][k] * rho_inv;
-	square[i][j][k] = 0.5* (u[1][i][j][k]*u[1][i][j][k] + 
+    square_ijk = 0.5* (u[1][i][j][k]*u[1][i][j][k] +
 				u[2][i][j][k]*u[2][i][j][k] +
 				u[3][i][j][k]*u[3][i][j][k] ) * rho_inv;
-	qs[i][j][k] = square[i][j][k] * rho_inv;
+    square[i][j][k] = square_ijk;
+    qs[i][j][k] = square_ijk * rho_inv;
 /*--------------------------------------------------------------------
 c               (do not need speed and ainx until the lhs computation)
 c-------------------------------------------------------------------*/
-	aux = c1c2*rho_inv* (u[4][i][j][k] - square[i][j][k]);
+    aux = c1c2*rho_inv* (u[4][i][j][k] - square_ijk);
 	aux = sqrt(aux);
 	speed[i][j][k] = aux;
 	ainv[i][j][k]  = 1.0/aux;
@@ -2303,7 +2305,7 @@ c      perform the Thomas algorithm; first, FORWARD ELIMINATION
     #pragma acc kernels present(lhs,rhs,grid_points)
     for (j = 1; j <= grid_points[1]-2; j++) {
       for (k = 1; k <= grid_points[2]-2; k++) {
-    // #pragma acc cache (lhs,rhs)
+    //#pragma acc cache (lhs,rhs)
 	fac1               = 1./lhs[n+2][i][j][k];
 	lhs[n+3][i][j][k]   = fac1*lhs[n+3][i][j][k];
 	lhs[n+4][i][j][k]   = fac1*lhs[n+4][i][j][k];
@@ -2341,7 +2343,7 @@ c      elimination of off-diagonal entries
   #pragma acc kernels present(lhs,rhs,grid_points)
   for (j = 1; j <= grid_points[1]-2; j++) {
     for (k = 1; k <= grid_points[2]-2; k++) {
-      // #pragma acc cache (lhs,rhs)
+      //#pragma acc cache (lhs,rhs)
       fac1               = 1.0/lhs[n+2][i][j][k];
       lhs[n+3][i][j][k]   = fac1*lhs[n+3][i][j][k];
       lhs[n+4][i][j][k]   = fac1*lhs[n+4][i][j][k];
@@ -2379,7 +2381,7 @@ c      do the u+c and the u-c factors
       #pragma acc kernels present(lhs,rhs,grid_points)
       for (j = 1; j <= grid_points[1]-2; j++) {
 	for (k = 1; k <= grid_points[2]-2; k++) {
-      // #pragma acc cache (lhs,rhs)
+      //#pragma acc cache (lhs,rhs)
 	  fac1               = 1./lhs[n+2][i][j][k];
 	  lhs[n+3][i][j][k]   = fac1*lhs[n+3][i][j][k];
 	  lhs[n+4][i][j][k]   = fac1*lhs[n+4][i][j][k];
@@ -2409,7 +2411,7 @@ c         And again the last two rows separately
     #pragma acc kernels present(lhs,rhs,grid_points)
     for (j = 1; j <= grid_points[1]-2; j++) {
       for (k = 1; k <= grid_points[2]-2; k++) {
-    // #pragma acc cache (lhs,rhs)
+    //#pragma acc cache (lhs,rhs)
 	fac1               = 1./lhs[n+2][i][j][k];
 	lhs[n+3][i][j][k]   = fac1*lhs[n+3][i][j][k];
 	lhs[n+4][i][j][k]   = fac1*lhs[n+4][i][j][k];
@@ -2532,8 +2534,8 @@ c                          FORWARD ELIMINATION
     j2 = j  + 2;
     #pragma acc kernels present(lhs,rhs,grid_points)
     for (i = 1; i <= grid_points[0]-2; i++) {
+      //#pragma acc cache(lhs,rhs)
       for (k = 1; k <= grid_points[2]-2; k++) {
-    // #pragma acc cache(lhs,rhs)
 	fac1               = 1./lhs[n+2][i][j][k];
 	lhs[n+3][i][j][k]   = fac1*lhs[n+3][i][j][k];
 	lhs[n+4][i][j][k]   = fac1*lhs[n+4][i][j][k];
@@ -2571,7 +2573,7 @@ c      elimination of off-diagonal entries
   #pragma acc kernels present(lhs,rhs,grid_points)
   for (i = 1; i <= grid_points[0]-2; i++) {
     for (k = 1; k <= grid_points[2]-2; k++) {
-      // #pragma acc cache(lhs,rhs)
+      //#pragma acc cache(lhs,rhs)
       fac1               = 1./lhs[n+2][i][j][k];
       lhs[n+3][i][j][k]   = fac1*lhs[n+3][i][j][k];
       lhs[n+4][i][j][k]   = fac1*lhs[n+4][i][j][k];
@@ -2607,7 +2609,7 @@ c      do the u+c and the u-c factors
       #pragma acc kernels present(lhs,rhs,grid_points)
       for (i = 1; i <= grid_points[0]-2; i++) {
 	for (k = 1; k <= grid_points[2]-2; k++) {
-      // #pragma acc cache(lhs,rhs)
+      //#pragma acc cache(lhs,rhs)
 	  fac1               = 1./lhs[n+2][i][j][k];
 	  lhs[n+3][i][j][k]   = fac1*lhs[n+3][i][j][k];
 	  lhs[n+4][i][j][k]   = fac1*lhs[n+4][i][j][k];
@@ -2636,7 +2638,7 @@ c         And again the last two rows separately
     #pragma acc kernels present(lhs,rhs,grid_points)
     for (i = 1; i <= grid_points[0]-2; i++) {
       for (k = 1; k <= grid_points[2]-2; k++) {
-    // #pragma acc cache(lhs,rhs)
+    //#pragma acc cache(lhs,rhs)
 	fac1               = 1./lhs[n+2][i][j][k];
 	lhs[n+3][i][j][k]   = fac1*lhs[n+3][i][j][k];
 	lhs[n+4][i][j][k]   = fac1*lhs[n+4][i][j][k];
