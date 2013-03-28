@@ -118,7 +118,10 @@ c-------------------------------------------------------------------*/
 /*--------------------------------------------------------------------
 c      do one time step to touch all code, and reinitialize
 c-------------------------------------------------------------------*/
+
   #pragma acc update device(u,forcing)
+  adi();
+
   initialize();
 
   timer_clear(1);
@@ -1275,14 +1278,18 @@ c-------------------------------------------------------------------*/
     for (j = 0; j <= grid_points[1]-1; j++) {
       for (k = 0; k <= grid_points[2]-1; k++) {
     double square_ijk;
+    double u_1ijk = u[1][i][j][k];
+    double u_2ijk = u[2][i][j][k];
+    double u_3ijk = u[3][i][j][k];
+
 	rho_inv = 1.0/u[0][i][j][k];
 	rho_i[i][j][k] = rho_inv;
-	us[i][j][k] = u[1][i][j][k] * rho_inv;
-	vs[i][j][k] = u[2][i][j][k] * rho_inv;
-	ws[i][j][k] = u[3][i][j][k] * rho_inv;
-    square_ijk = 0.5* (u[1][i][j][k]*u[1][i][j][k] +
-				u[2][i][j][k]*u[2][i][j][k] +
-				u[3][i][j][k]*u[3][i][j][k] ) * rho_inv;
+    us[i][j][k] = u_1ijk * rho_inv;
+    vs[i][j][k] = u_2ijk * rho_inv;
+    ws[i][j][k] = u_3ijk * rho_inv;
+    square_ijk = 0.5* (u_1ijk*u_1ijk +
+                u_2ijk*u_2ijk +
+                u_3ijk*u_3ijk ) * rho_inv;
     square[i][j][k] = square_ijk;
     qs[i][j][k] = square_ijk * rho_inv;
 /*--------------------------------------------------------------------
@@ -2468,13 +2475,13 @@ c      The first three factors
     i1 = i  + 1;
     i2 = i  + 2;
     #pragma acc kernels present(lhs,rhs,grid_points)
+    for (j = 1; j <= grid_points[1]-2; j++) {
+      for (k = 1; k <= grid_points[2]-2; k++) {
     for (m = 0; m < 3; m++) {
-      for (j = 1; j <= grid_points[1]-2; j++) {
-	for (k = 1; k <= grid_points[2]-2; k++) {
-	  rhs[m][i][j][k] = rhs[m][i][j][k] - 
-	    lhs[n+3][i][j][k]*rhs[m][i1][j][k] -
-	    lhs[n+4][i][j][k]*rhs[m][i2][j][k];
-	}
+      rhs[m][i][j][k] = rhs[m][i][j][k] -
+        lhs[n+3][i][j][k]*rhs[m][i1][j][k] -
+        lhs[n+4][i][j][k]*rhs[m][i2][j][k];
+    }
       }
     }
   }
@@ -2926,14 +2933,30 @@ c-------------------------------------------------------------------*/
     for (i = 1; i <= grid_points[0]-2; i++) {
       #pragma acc loop
       for (j = 1; j <= grid_points[1]-2; j++) {
+#if 0 /* Unoptimized version */
   #pragma acc loop seq
-	for (k = grid_points[2]-3; k >= 0; k--) {
-	  k1 = k  + 1;
-	  k2 = k  + 2;
-	  rhs[m][i][j][k] = rhs[m][i][j][k] - 
-	    lhs[n+3][i][j][k]*rhs[m][i][j][k1] -
-	    lhs[n+4][i][j][k]*rhs[m][i][j][k2];
-	}
+    for (k = grid_points[2]-3; k >= 0; k--) {
+      k1 = k  + 1;
+      k2 = k  + 2;
+      rhs[m][i][j][k] = rhs[m][i][j][k] -
+        lhs[n+3][i][j][k]*rhs[m][i][j][k1] -
+        lhs[n+4][i][j][k]*rhs[m][i][j][k2];
+    }
+#else
+    k = grid_points[2]-3;
+    double rhs_kup1 = rhs[m][i][j][k+1];
+    double rhs_kup2 = rhs[m][i][j][k+2];
+    double rhs_mijk;
+    #pragma acc loop seq
+    for (k = k; k >= 0; k--) {
+      rhs_mijk = rhs[m][i][j][k] -
+        lhs[n+3][i][j][k]*rhs_kup1 -
+        lhs[n+4][i][j][k]*rhs_kup2;
+      rhs[m][i][j][k] = rhs_mijk;
+      rhs_kup2 = rhs_kup1;
+      rhs_kup1 = rhs_mijk;
+    }
+#endif
       }
     }
   }
@@ -2947,6 +2970,7 @@ c-------------------------------------------------------------------*/
     for (i = 1; i <= grid_points[0]-2; i++) {
       #pragma acc loop
       for (j = 1; j <= grid_points[1]-2; j++) {
+#if 0 /* Unoptimized version */
   #pragma acc loop seq
 	for (k = grid_points[2]-3; k >= 0; k--) {
 	  k1 = k  + 1;
@@ -2955,6 +2979,21 @@ c-------------------------------------------------------------------*/
 	    lhs[n+3][i][j][k]*rhs[m][i][j][k1] -
 	    lhs[n+4][i][j][k]*rhs[m][i][j][k2];
 	}
+#else
+    k = grid_points[2]-3;
+    double rhs_kup1 = rhs[m][i][j][k+1];
+    double rhs_kup2 = rhs[m][i][j][k+2];
+    double rhs_mijk;
+    #pragma acc loop seq
+    for (k = k; k >= 0; k--) {
+      rhs_mijk = rhs[m][i][j][k] -
+        lhs[n+3][i][j][k]*rhs_kup1 -
+        lhs[n+4][i][j][k]*rhs_kup2;
+      rhs[m][i][j][k] = rhs_mijk;
+      rhs_kup2 = rhs_kup1;
+      rhs_kup1 = rhs_mijk;
+    }
+#endif
       }
     }
   }
