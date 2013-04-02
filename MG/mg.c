@@ -436,9 +436,11 @@ c-------------------------------------------------------------------*/
 
     int i3, i2, i1;
     double r1[M], r2[M];
-    #pragma acc kernels present(r, u)
+    #pragma acc parallel loop present(r, u)
     for (i3 = 1; i3 < n3-1; i3++) {
-	for (i2 = 1; i2 < n2-1; i2++) {
+        #pragma acc loop seq
+        for (i2 = 1; i2 < n2-1; i2++) {
+            #pragma acc loop seq
             for (i1 = 0; i1 < n1; i1++) {
         r1[i1] = ACCESS_ARRAY_3D(r,i3,i2-1,i1)
                + ACCESS_ARRAY_3D(r,i3,i2+1,i1)
@@ -448,7 +450,8 @@ c-------------------------------------------------------------------*/
                + ACCESS_ARRAY_3D(r,i3-1,i2+1,i1)
                + ACCESS_ARRAY_3D(r,i3+1,i2-1,i1)
                + ACCESS_ARRAY_3D(r,i3+1,i2+1,i1);
-	    }
+            }
+            #pragma acc loop seq
             for (i1 = 1; i1 < n1-1; i1++) {
         ACCESS_ARRAY_3D(u,i3,i2,i1) = ACCESS_ARRAY_3D(u,i3,i2,i1)
             + c[0] * ACCESS_ARRAY_3D(r,i3,i2,i1)
@@ -460,8 +463,8 @@ c  Assume c(3) = 0    (Enable line below if c(3) not= 0)
 c---------------------------------------------------------------------
 c    >                     + c(3) * ( r2(i1-1) + r2(i1+1) )
 c-------------------------------------------------------------------*/
-	    }
-	}
+            }
+        }
     }
 
 /*--------------------------------------------------------------------
@@ -502,9 +505,11 @@ c-------------------------------------------------------------------*/
 
     int i3, i2, i1;
     double u1[M], u2[M];
-    #pragma acc kernels create(u1,u2) present(u, v, r, a)
+    #pragma acc parallel loop create(u1,u2) present(u, v, r, a)
     for (i3 = 1; i3 < n3-1; i3++) {
-	for (i2 = 1; i2 < n2-1; i2++) {
+        #pragma acc loop seq
+        for (i2 = 1; i2 < n2-1; i2++) {
+            #pragma acc loop seq
             for (i1 = 0; i1 < n1; i1++) {
         u1[i1] = ACCESS_ARRAY_3D(u,i3,i2-1,i1)
                + ACCESS_ARRAY_3D(u,i3,i2+1,i1)
@@ -514,8 +519,9 @@ c-------------------------------------------------------------------*/
                + ACCESS_ARRAY_3D(u,i3-1,i2+1,i1)
                + ACCESS_ARRAY_3D(u,i3+1,i2-1,i1)
                + ACCESS_ARRAY_3D(u,i3+1,i2+1,i1);
-	    }
-	    for (i1 = 1; i1 < n1-1; i1++) {
+            }
+            #pragma acc loop seq
+            for (i1 = 1; i1 < n1-1; i1++) {
         ACCESS_ARRAY_3D(r,i3,i2,i1) = ACCESS_ARRAY_3D(v,i3,i2,i1)
             - a[0] * ACCESS_ARRAY_3D(u,i3,i2,i1)
 /*--------------------------------------------------------------------
@@ -526,8 +532,8 @@ c    >                              + u1(i1) )
 c-------------------------------------------------------------------*/
 		- a[2] * ( u2[i1] + u1[i1-1] + u1[i1+1] )
 		      - a[3] * ( u2[i1-1] + u2[i1+1] );
-	    }
-	}
+            }
+        }
     }
 
 /*--------------------------------------------------------------------
@@ -585,12 +591,12 @@ c-------------------------------------------------------------------*/
     } else {
         d3 = 1;
     }
-    #pragma acc kernels create(x1, y1) present(r, s)
+    #pragma acc parallel loop create(x1, y1) present(r, s)
     for (j3 = 1; j3 < m3j-1; j3++) {
 	i3 = 2*j3-d3;
 /*C        i3 = 2*j3-1*/
-       #pragma acc loop seq
-	for (j2 = 1; j2 < m2j-1; j2++) {
+        #pragma acc loop seq
+        for (j2 = 1; j2 < m2j-1; j2++) {
             i2 = 2*j2-d2;
 /*C           i2 = 2*j2-1*/
             #pragma acc loop seq
@@ -607,6 +613,7 @@ c-------------------------------------------------------------------*/
                + ACCESS_ARRAY_3D(r,i3+2,i2+2,i1);
 	    }
 
+            #pragma acc loop seq
             for (j1 = 1; j1 < m1j-1; j1++) {
 		i1 = 2*j1-d1;
 /*C             i1 = 2*j1-1*/
@@ -668,42 +675,48 @@ c      parameter( m=535 )
     double z1[M], z2[M], z3[M];
 
     if ( n1 != 3 && n2 != 3 && n3 != 3 ) {
-    #pragma acc kernels create(z1, z2, z3) present(z, u)
+    #pragma acc parallel loop create(z1, z2, z3) present(z, u)
 	for (i3 = 0; i3 < mm3-1; i3++) {
+            #pragma acc loop seq
             for (i2 = 0; i2 < mm2-1; i2++) {
-		for (i1 = 0; i1 < mm1; i1++) {
+                #pragma acc loop seq
+                for (i1 = 0; i1 < mm1; i1++) {
             z1[i1] = ACCESS_ARRAY_3D(z,i3,i2+1,i1)
                     + ACCESS_ARRAY_3D(z,i3,i2,i1);
             z2[i1] = ACCESS_ARRAY_3D(z,i3+1,i2,i1)
                     + ACCESS_ARRAY_3D(z,i3,i2,i1);
             z3[i1] = ACCESS_ARRAY_3D(z,i3+1,i2+1,i1)
                     + ACCESS_ARRAY_3D(z,i3+1,i2,i1) + z1[i1];
-		}
-		for (i1 = 0; i1 < mm1-1; i1++) {
+                }
+                #pragma acc loop seq
+                for (i1 = 0; i1 < mm1-1; i1++) {
             ACCESS_ARRAY_3D(u,2*i3,2*i2,2*i1)
                 = ACCESS_ARRAY_3D(u,2*i3,2*i2,2*i1)	+ ACCESS_ARRAY_3D(z,i3,i2,i1);
             ACCESS_ARRAY_3D(u,2*i3,2*i2,2*i1+1)
                 = ACCESS_ARRAY_3D(u,2*i3,2*i2,2*i1+1)
             +0.5*(ACCESS_ARRAY_3D(z,i3,i2,i1+1)+ACCESS_ARRAY_3D(z,i3,i2,i1));
-		}
-		for (i1 = 0; i1 < mm1-1; i1++) {
+                }
+                #pragma acc loop seq
+                for (i1 = 0; i1 < mm1-1; i1++) {
             ACCESS_ARRAY_3D(u,2*i3,2*i2+1,2*i1)
                 = ACCESS_ARRAY_3D(u,2*i3,2*i2+1,2*i1) +0.5 * z1[i1];
             ACCESS_ARRAY_3D(u,2*i3,2*i2+1,2*i1+1)
                 = ACCESS_ARRAY_3D(u,2*i3,2*i2+1,2*i1+1) +0.25*( z1[i1] + z1[i1+1] );
-		}
-		for (i1 = 0; i1 < mm1-1; i1++) {
+                }
+                #pragma acc loop seq
+                for (i1 = 0; i1 < mm1-1; i1++) {
             ACCESS_ARRAY_3D(u,2*i3+1,2*i2,2*i1)
                 = ACCESS_ARRAY_3D(u,2*i3+1,2*i2,2*i1) +0.5 * z2[i1];
             ACCESS_ARRAY_3D(u,2*i3+1,2*i2,2*i1+1)
                 = ACCESS_ARRAY_3D(u,2*i3+1,2*i2,2*i1+1)	+0.25*( z2[i1] + z2[i1+1] );
-		}
-		for (i1 = 0; i1 < mm1-1; i1++) {
+                }
+                #pragma acc loop seq
+                for (i1 = 0; i1 < mm1-1; i1++) {
             ACCESS_ARRAY_3D(u,2*i3+1,2*i2+1,2*i1)
                 = ACCESS_ARRAY_3D(u,2*i3+1,2*i2+1,2*i1)	+0.25* z3[i1];
             ACCESS_ARRAY_3D(u,2*i3+1,2*i2+1,2*i1+1)
                 = ACCESS_ARRAY_3D(u,2*i3+1,2*i2+1,2*i1+1) +0.125*( z3[i1] + z3[i1+1] );
-		}
+                }
 	    }
 	}
     } else {
@@ -731,66 +744,78 @@ c      parameter( m=535 )
             t3 = 0;
 	}
          
-    #pragma acc kernels present(u, z)
-	for ( i3 = d3; i3 <= mm3-1; i3++) {
+    #pragma acc parallel loop present(u, z)
+        for ( i3 = d3; i3 <= mm3-1; i3++) {
+            #pragma acc loop seq
             for ( i2 = d2; i2 <= mm2-1; i2++) {
-		for ( i1 = d1; i1 <= mm1-1; i1++) {
+                #pragma acc loop seq
+                for ( i1 = d1; i1 <= mm1-1; i1++) {
             ACCESS_ARRAY_3D(u,2*i3-d3-1,2*i2-d2-1,2*i1-d1-1) =
             ACCESS_ARRAY_3D(u,2*i3-d3-1,2*i2-d2-1,2*i1-d1-1)
             +ACCESS_ARRAY_3D(z,i3-1,i2-1,i1-1);
-		}
-		for ( i1 = 1; i1 <= mm1-1; i1++) {
+                }
+                #pragma acc loop seq
+                for ( i1 = 1; i1 <= mm1-1; i1++) {
             ACCESS_ARRAY_3D(u,2*i3-d3-1,2*i2-d2-1,2*i1-t1-1) =
             ACCESS_ARRAY_3D(u,2*i3-d3-1,2*i2-d2-1,2*i1-t1-1)
             +0.5*(ACCESS_ARRAY_3D(z,i3-1,i2-1,i1)+ACCESS_ARRAY_3D(z,i3-1,i2-1,i1-1));
-		}
-	    }
+                }
+            }
+            #pragma acc loop seq
             for ( i2 = 1; i2 <= mm2-1; i2++) {
-		for ( i1 = d1; i1 <= mm1-1; i1++) {
+                #pragma acc loop seq
+                for ( i1 = d1; i1 <= mm1-1; i1++) {
             ACCESS_ARRAY_3D(u,2*i3-d3-1,2*i2-t2-1,2*i1-d1-1) =
             ACCESS_ARRAY_3D(u,2*i3-d3-1,2*i2-t2-1,2*i1-d1-1)
             +0.5*(ACCESS_ARRAY_3D(z,i3-1,i2,i1-1)+ACCESS_ARRAY_3D(z,i3-1,i2-1,i1-1));
-		}
-		for ( i1 = 1; i1 <= mm1-1; i1++) {
+                }
+                #pragma acc loop seq
+                for ( i1 = 1; i1 <= mm1-1; i1++) {
             ACCESS_ARRAY_3D(u,2*i3-d3-1,2*i2-t2-1,2*i1-t1-1) =
             ACCESS_ARRAY_3D(u,2*i3-d3-1,2*i2-t2-1,2*i1-t1-1)
             +0.25*(ACCESS_ARRAY_3D(z,i3-1,i2,i1)+ACCESS_ARRAY_3D(z,i3-1,i2-1,i1)
                   +ACCESS_ARRAY_3D(z,i3-1,i2,i1-1)+ACCESS_ARRAY_3D(z,i3-1,i2-1,i1-1));
-		}
-	    }
-	}
-    #pragma acc kernels present(u, z)
-	for ( i3 = 1; i3 <= mm3-1; i3++) {
+                }
+            }
+        }
+        #pragma acc parallel loop present(u, z)
+        for ( i3 = 1; i3 <= mm3-1; i3++) {
+            #pragma acc loop seq
             for ( i2 = d2; i2 <= mm2-1; i2++) {
-		for ( i1 = d1; i1 <= mm1-1; i1++) {
+                #pragma acc loop seq
+                for ( i1 = d1; i1 <= mm1-1; i1++) {
             ACCESS_ARRAY_3D(u,2*i3-t3-1,2*i2-d2-1,2*i1-d1-1) =
             ACCESS_ARRAY_3D(u,2*i3-t3-1,2*i2-d2-1,2*i1-d1-1)
             +0.5*(ACCESS_ARRAY_3D(z,i3,i2-1,i1-1)+ACCESS_ARRAY_3D(z,i3-1,i2-1,i1-1));
-		}
-		for ( i1 = 1; i1 <= mm1-1; i1++) {
+                }
+                #pragma acc loop seq
+                for ( i1 = 1; i1 <= mm1-1; i1++) {
             ACCESS_ARRAY_3D(u,2*i3-t3-1,2*i2-d2-1,2*i1-t1-1) =
             ACCESS_ARRAY_3D(u,2*i3-t3-1,2*i2-d2-1,2*i1-t1-1)
             +0.25*(ACCESS_ARRAY_3D(z,i3,i2-1,i1)+ACCESS_ARRAY_3D(z,i3,i2-1,i1-1)
                    +ACCESS_ARRAY_3D(z,i3-1,i2-1,i1)+ACCESS_ARRAY_3D(z,i3-1,i2-1,i1-1));
-		}
-	    }
-	    for ( i2 = 1; i2 <= mm2-1; i2++) {
-		for ( i1 = d1; i1 <= mm1-1; i1++) {
+                }
+            }
+            #pragma acc loop seq
+            for ( i2 = 1; i2 <= mm2-1; i2++) {
+                #pragma acc loop seq
+                for ( i1 = d1; i1 <= mm1-1; i1++) {
             ACCESS_ARRAY_3D(u,2*i3-t3-1,2*i2-t2-1,2*i1-d1-1) =
             ACCESS_ARRAY_3D(u,2*i3-t3-1,2*i2-t2-1,2*i1-d1-1)
             +0.25*(ACCESS_ARRAY_3D(z,i3,i2,i1-1)+ACCESS_ARRAY_3D(z,i3,i2-1,i1-1)
                    +ACCESS_ARRAY_3D(z,i3-1,i2,i1-1)+ACCESS_ARRAY_3D(z,i3-1,i2-1,i1-1));
-		}
-		for ( i1 = 1; i1 <= mm1-1; i1++) {
+                }
+                #pragma acc loop seq
+                for ( i1 = 1; i1 <= mm1-1; i1++) {
             ACCESS_ARRAY_3D(u,2*i3-t3-1,2*i2-t2-1,2*i1-t1-1) =
             ACCESS_ARRAY_3D(u,2*i3-t3-1,2*i2-t2-1,2*i1-t1-1)
             +0.125*(ACCESS_ARRAY_3D(z,i3,i2,i1)+ACCESS_ARRAY_3D(z,i3,i2-1,i1)
                 +ACCESS_ARRAY_3D(z,i3,i2,i1-1)+ACCESS_ARRAY_3D(z,i3,i2-1,i1-1)
                 +ACCESS_ARRAY_3D(z,i3-1,i2,i1)+ACCESS_ARRAY_3D(z,i3-1,i2-1,i1)
                 +ACCESS_ARRAY_3D(z,i3-1,i2,i1-1)+ACCESS_ARRAY_3D(z,i3-1,i2-1,i1-1));
-		}
-	    }
-	}
+                }
+            }
+        }
     }
 
     if (debug_vec[0] >= 1 ) {
@@ -882,30 +907,33 @@ c-------------------------------------------------------------------*/
     int i1, i2, i3;
 
     /* axis = 1 */
-    #pragma acc kernels present(u)
+    #pragma acc parallel loop present(u)
     for ( i3 = 1; i3 < n3-1; i3++) {
-	for ( i2 = 1; i2 < n2-1; i2++) {
+        #pragma acc loop
+        for ( i2 = 1; i2 < n2-1; i2++) {
         ACCESS_ARRAY_3D(u,i3,i2,n1-1) = ACCESS_ARRAY_3D(u,i3,i2,1);
         ACCESS_ARRAY_3D(u,i3,i2,0) = ACCESS_ARRAY_3D(u,i3,i2,n1-2);
-	}
+        }
     }
 
     /* axis = 2 */
-    #pragma acc kernels present(u)
+    #pragma acc parallel loop present(u)
     for ( i3 = 1; i3 < n3-1; i3++) {
-	for ( i1 = 0; i1 < n1; i1++) {
+        #pragma acc loop
+        for ( i1 = 0; i1 < n1; i1++) {
         ACCESS_ARRAY_3D(u,i3,n2-1,i1) = ACCESS_ARRAY_3D(u,i3,1,i1);
         ACCESS_ARRAY_3D(u,i3,0,i1) = ACCESS_ARRAY_3D(u,i3,n2-2,i1);
-	}
+        }
     }
 
     /* axis = 3 */
-    #pragma acc kernels present(u)
+    #pragma acc parallel loop present(u)
     for ( i2 = 0; i2 < n2; i2++) {
-	for ( i1 = 0; i1 < n1; i1++) {
+        #pragma acc loop
+        for ( i1 = 0; i1 < n1; i1++) {
         ACCESS_ARRAY_3D(u,n3-1,i2,i1) = ACCESS_ARRAY_3D(u,1,i2,i1);
         ACCESS_ARRAY_3D(u,0,i2,i1) = ACCESS_ARRAY_3D(u,n3-2,i2,i1);
-	}
+        }
     }
 }
 
@@ -1067,13 +1095,15 @@ c-------------------------------------------------------------------*/
     }
     printf("\n");*/
 
-    #pragma acc kernels present(z)
+    #pragma acc parallel loop present(z)
     for (i3 = 0; i3 < n3; i3++) {
-	for (i2 = 0; i2 < n2; i2++) {
+        #pragma acc loop
+        for (i2 = 0; i2 < n2; i2++) {
+            #pragma acc loop
             for (i1 = 0; i1 < n1; i1++) {
         ACCESS_ARRAY_3D(z,i3,i2,i1) = 0.0;
-	    }
-	}
+            }
+        }
     }
     for (i = MM-1; i >= m0; i--) {
     ACCESS_ARRAY_3D(z, j3[i][0], j2[i][0], j1[i][0]) = -1.0;
@@ -1221,13 +1251,15 @@ static void zero3(double *z, int n1, int n2, int n3) {
 c-------------------------------------------------------------------*/
 
     int i1, i2, i3;
-    #pragma acc kernels present(z)
+    #pragma acc parallel loop present(z)
     for (i3 = 0;i3 < n3; i3++) {
-    for (i2 = 0; i2 < n2; i2++) {
+        #pragma acc loop
+        for (i2 = 0; i2 < n2; i2++) {
+            #pragma acc loop
             for (i1 = 0; i1 < n1; i1++) {
         ACCESS_ARRAY_3D(z,i3,i2,i1) = 0.0;
+            }
         }
-    }
     }
 }
 
