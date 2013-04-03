@@ -1,21 +1,15 @@
 /*--------------------------------------------------------------------
   
-  NAS Parallel Benchmarks 2.3 OpenMP C versions - FT
+  NAS Parallel Benchmarks 2.3 OpenACC C versions - FT
 
-  This benchmark is an OpenMP C version of the NPB FT code.
+  This benchmark is an OpenACC C version of the NPB FT code.
   
-  The OpenMP C versions are developed by RWCP and derived from the serial
-  Fortran versions in "NPB 2.3-serial" developed by NAS.
+  The OpenACC C versions are derived from OpenMP C versions
+  in "NPB 2.3-omp" developed by NAS.
 
   Permission to use, copy, distribute and modify this software for any
   purpose with or without fee is hereby granted.
   This software is provided "as is" without express or implied warranty.
-  
-  Send comments on the OpenMP C versions to pdp-openmp@rwcp.or.jp
-
-  Information on OpenMP activities at RWCP is available at:
-
-           http://pdplab.trc.rwcp.or.jp/pdperf/Omni/
   
   Information on NAS Parallel Benchmarks 2.3 is available at:
   
@@ -28,6 +22,7 @@
            W. Saphir
 
   OpenMP C version: S. Satoh
+  OpenACC C version: P. Makpaisit
   
 --------------------------------------------------------------------*/
 
@@ -77,7 +72,7 @@ int main(int argc, char **argv) {
 /*c-------------------------------------------------------------------
 c-------------------------------------------------------------------*/
 
-    int i, ierr;
+    int i;
       
 /*------------------------------------------------------------------
 c u0, u1, u2 are the main arrays in the problem. 
@@ -120,6 +115,8 @@ c-------------------------------------------------------------------*/
     }
     setup();
 
+//#pragma acc data create(indexmap,uo,u1,u2) copyin(xstart, ystart, zstart, dims)
+{
     compute_indexmap(indexmap);
 
     compute_initial_conditions(u1, dims[0]);
@@ -185,6 +182,7 @@ c-------------------------------------------------------------------*/
 	  timer_stop(T_CHECKSUM);
 	}
     }
+} /* end acc data */
 
     verify(NX, NY, NZ, niter, &verified, &class);
   
@@ -221,11 +219,13 @@ c-------------------------------------------------------------------*/
 
     int i, j, k;
 
-    #pragma acc present(indexmap) present_or_copyin(u0, u1)
+    //#pragma acc kernels present(indexmap,u0,u1)
     for (k = 0; k < d[2]; k++) {
 	for (j = 0; j < d[1]; j++) {
             for (i = 0; i < d[0]; i++) {
-	      crmul(u1[k][j][i], u0[k][j][i], ex[t*indexmap[k][j][i]]);
+          int idx = indexmap[k][j][i];
+          u1[k][j][i].real = u0[k][j][i].real * ex[t*idx];
+          u1[k][j][i].imag = u0[k][j][i].imag * ex[t*idx];
 	    }
 	}
     }
@@ -323,9 +323,9 @@ static void setup(void) {
 /*--------------------------------------------------------------------
 c-------------------------------------------------------------------*/
 
-    int ierr, i, j, fstatus;
+    int i;
       
-    printf("\n\n NAS Parallel Benchmarks 2.3 OpenMP C version"
+    printf("\n\n NAS Parallel Benchmarks 2.3 OpenACC C version"
 	   " - FT Benchmark\n\n");
 
     niter = NITER_DEFAULT;
@@ -400,14 +400,16 @@ c The following magic formula does the trick:
 c mod(i-1+n/2, n) - n/2
 c-------------------------------------------------------------------*/
 
-    #pragma acc kernels present_or_create(indexmap) \
-        present_or_copyin(xstart, ystart, zstart, dims)
+    //#pragma acc kernels present_or_create(indexmap) present_or_copyin(xstart, ystart, zstart, dims)
+    //#pragma acc parallel loop copy(indexmap[0:NZ][0:NY][0:NX])
     for (i = 0; i < dims[2][0]; i++) {
 	ii =  (i+1+xstart[2]-2+NX/2)%NX - NX/2;
 	ii2 = ii*ii;
+    //#pragma acc loop seq
 	for (j = 0; j < dims[2][1]; j++) {
             jj = (j+1+ystart[2]-2+NY/2)%NY - NY/2;
             ij2 = jj*jj+ii2;
+            //#pragma acc loop seq
             for (k = 0; k < dims[2][2]; k++) {
 		kk = (k+1+zstart[2]-2+NZ/2)%NZ - NZ/2;
 		indexmap[k][j][i] = kk*kk+ij2;
@@ -470,6 +472,8 @@ c       xin/xout may be the same and it can be somewhat faster
 c       if they are
 c-------------------------------------------------------------------*/
 
+//#pragma acc data create(y0,y1)
+{
     if (dir == 1) {
         cffts1(1, dims[0], x1, x1, y0, y1);	/* x1 -> x1 */
         cffts2(1, dims[1], x1, x1, y0, y1);	/* x1 -> x1 */
@@ -479,6 +483,7 @@ c-------------------------------------------------------------------*/
         cffts2(-1, dims[1], x1, x1, y0, y1);	/* x1 -> x1 */
         cffts1(-1, dims[0], x1, x2, y0, y1);	/* x1 -> x2 */
     }
+} /* end acc data */
 }
 
 
@@ -499,32 +504,32 @@ c-------------------------------------------------------------------*/
     for (i = 0; i < 3; i++) {
 	logd[i] = ilog2(d[i]);
     }
-    #pragma acc present_or_create(x, xout, y0, y1) copyin(logd)
+
+    //#pragma acc kernels present_or_create(x, xout, y0, y1) copyin(logd)
+    //#pragma acc parallel loop present(y0[0:NX][0:FFTBLOCKPAD],y1[0:NX][0:FFTBLOCKPAD]) \
+        //copy(x[0:NZ][0:NY][0:NX],xout[0:NZ][0:NY][0:NX]) copyin(logd)
     for (k = 0; k < d[2]; k++) {
-	for (jj = 0; jj <= d[1] - fftblock; jj+=fftblock) {
-/*          if (TIMERS_ENABLED == TRUE) timer_start(T_FFTCOPY); */
+    //#pragma acc loop seq
+    for (jj = 0; jj <= d[1] - fftblock; jj+=fftblock) {
+            //#pragma acc loop seq
             for (j = 0; j < fftblock; j++) {
-		for (i = 0; i < d[0]; i++) {
-		    y0[i][j].real = x[k][j+jj][i].real;
-		    y0[i][j].imag = x[k][j+jj][i].imag;
-		}
-	    }
-/*          if (TIMERS_ENABLED == TRUE) timer_stop(T_FFTCOPY); */
-            
-/*          if (TIMERS_ENABLED == TRUE) timer_start(T_FFTLOW); */
-            cfftz (is, logd[0],
-		   d[0], y0, y1);
-	    
-/*          if (TIMERS_ENABLED == TRUE) timer_stop(T_FFTLOW); */
-/*          if (TIMERS_ENABLED == TRUE) timer_start(T_FFTCOPY); */
+        //#pragma acc loop
+        for (i = 0; i < d[0]; i++) {
+            y0[i][j].real = x[k][j+jj][i].real;
+            y0[i][j].imag = x[k][j+jj][i].imag;
+        }
+        }
+
+            cfftz (is, logd[0], d[0], y0, y1);
+            //#pragma acc loop seq
             for (j = 0; j < fftblock; j++) {
-		for (i = 0; i < d[0]; i++) {
-		  xout[k][j+jj][i].real = y0[i][j].real;
-		  xout[k][j+jj][i].imag = y0[i][j].imag;
-		}
-	    }
-/*          if (TIMERS_ENABLED == TRUE) timer_stop(T_FFTCOPY); */
-	}
+        //#pragma acc loop
+        for (i = 0; i < d[0]; i++) {
+          xout[k][j+jj][i].real = y0[i][j].real;
+          xout[k][j+jj][i].imag = y0[i][j].imag;
+        }
+        }
+    }
     }
 }
 
@@ -546,30 +551,30 @@ c-------------------------------------------------------------------*/
     for (i = 0; i < 3; i++) {
 	logd[i] = ilog2(d[i]);
     }
-    #pragma acc present_or_create(x, xout, y0, y1) copyin(logd)
+    //#pragma acc kernels present_or_create(x, xout, y0, y1) copyin(logd)
+    //#pragma acc parallel loop present(y0[0:NX][0:FFTBLOCKPAD],y1[0:NX][0:FFTBLOCKPAD]) \
+        //copy(x[0:NZ][0:NY][0:NX],xout[0:NZ][0:NY][0:NX])
     for (k = 0; k < d[2]; k++) {
+        //#pragma acc loop seq
         for (ii = 0; ii <= d[0] - fftblock; ii+=fftblock) {
-/*	    if (TIMERS_ENABLED == TRUE) timer_start(T_FFTCOPY); */
+        //#pragma acc loop
 	    for (j = 0; j < d[1]; j++) {
+        //#pragma acc loop seq
 		for (i = 0; i < fftblock; i++) {
 		    y0[j][i].real = x[k][j][i+ii].real;
 		    y0[j][i].imag = x[k][j][i+ii].imag;
 		}
-	    }
-/*	    if (TIMERS_ENABLED == TRUE) timer_stop(T_FFTCOPY); */
-/*	    if (TIMERS_ENABLED == TRUE) timer_start(T_FFTLOW); */
-	    cfftz (is, logd[1], 
-		   d[1], y0, y1);
-           
-/*          if (TIMERS_ENABLED == TRUE) timer_stop(T_FFTLOW); */
-/*          if (TIMERS_ENABLED == TRUE) timer_start(T_FFTCOPY); */
+        }
+
+        cfftz (is, logd[1], d[1], y0, y1);
+           //#pragma acc loop
            for (j = 0; j < d[1]; j++) {
+           //#pragma acc loop seq
 	       for (i = 0; i < fftblock; i++) {
 		   xout[k][j][i+ii].real = y0[j][i].real;
 		   xout[k][j][i+ii].imag = y0[j][i].imag;
 	       }
-	   }
-/*           if (TIMERS_ENABLED == TRUE) timer_stop(T_FFTCOPY); */
+       }
 	}
     }
 }
@@ -591,30 +596,30 @@ c-------------------------------------------------------------------*/
     for (i = 0;i < 3; i++) {
 	logd[i] = ilog2(d[i]);
     }
-    #pragma acc present_or_create(x, xout, y0, y1) copyin(logd)
+    //#pragma acc kernels present_or_create(x, xout, y0, y1) copyin(logd)
+    //#pragma acc parallel loop copy(y0[0:NX][0:FFTBLOCKPAD],y1[0:NX][0:FFTBLOCKPAD]) \
+        //copy(x[0:NZ][0:NY][0:NX],xout[0:NZ][0:NY][0:NX])
     for (j = 0; j < d[1]; j++) {
+        //#pragma acc loop seq
         for (ii = 0; ii <= d[0] - fftblock; ii+=fftblock) {
-/*	    if (TIMERS_ENABLED == TRUE) timer_start(T_FFTCOPY); */
+        //#pragma acc loop
 	    for (k = 0; k < d[2]; k++) {
+        //#pragma acc loop seq
 		for (i = 0; i < fftblock; i++) {
 		    y0[k][i].real = x[k][j][i+ii].real;
 		    y0[k][i].imag = x[k][j][i+ii].imag;
 		}
 	    }
 
-/*           if (TIMERS_ENABLED == TRUE) timer_stop(T_FFTCOPY); */
-/*           if (TIMERS_ENABLED == TRUE) timer_start(T_FFTLOW); */
-           cfftz (is, logd[2],
-		  d[2], y0, y1);
-/*           if (TIMERS_ENABLED == TRUE) timer_stop(T_FFTLOW); */
-/*           if (TIMERS_ENABLED == TRUE) timer_start(T_FFTCOPY); */
+           cfftz (is, logd[2], d[2], y0, y1);
+           //#pragma acc loop
            for (k = 0; k < d[2]; k++) {
+           //#pragma acc loop seq
 	       for (i = 0; i < fftblock; i++) {
 		   xout[k][j][i+ii].real = y0[k][i].real;
 		   xout[k][j][i+ii].imag = y0[k][i].imag;
 	       }
-	   }
-/*           if (TIMERS_ENABLED == TRUE) timer_stop(T_FFTCOPY); */
+       }
 	}
     }
 }
@@ -680,22 +685,12 @@ c   set to 0 and M set to MX, where MX is the maximum value of M for any
 c   subsequent call.
 c-------------------------------------------------------------------*/
 
-    int i,j,l,mx;
-
-/*--------------------------------------------------------------------
-c   Check if input parameters are invalid.
-c-------------------------------------------------------------------*/
-    mx = (int)(u[0].real);
-    if ((is != 1 && is != -1) || m < 1 || m > mx) {
-	printf("CFFTZ: Either U has not been initialized, or else\n"
-	       "one of the input parameters is invalid%5d%5d%5d\n",
-	       is, m, mx);
-	exit(1);
-    }
+    int i,j,l;
 
 /*--------------------------------------------------------------------
 c   Perform one variant of the Stockham FFT.
 c-------------------------------------------------------------------*/
+    #pragma acc loop seq
     for (l = 1; l <= m; l+=2) {
         fftz2 (is, l, m, n, fftblock, fftblockpad, u, x, y);
         if (l == m) break;
@@ -706,7 +701,9 @@ c-------------------------------------------------------------------*/
 c   Copy Y to X.
 c-------------------------------------------------------------------*/
     if (m % 2 == 1) {
+    #pragma acc loop
 	for (j = 0; j < n; j++) {
+        #pragma acc loop
 	    for (i = 0; i < fftblock; i++) {
 		x[j][i].real = y[j][i].real;
 		x[j][i].imag = y[j][i].imag;
@@ -751,6 +748,7 @@ c-------------------------------------------------------------------*/
     lj = 2 * lk;
     ku = li;
 
+    #pragma acc loop seq
     for (i = 0; i < li; i++) {
       
         i11 = i * lk;
@@ -768,7 +766,9 @@ c-------------------------------------------------------------------*/
 /*--------------------------------------------------------------------
 c   This loop is vectorizable.
 c-------------------------------------------------------------------*/
+        #pragma acc loop seq
         for (k = 0; k < lk; k++) {
+        #pragma acc loop seq
 	    for (j = 0; j < ny; j++) {
 		double x11real, x11imag;
 		double x21real, x21imag;
@@ -820,13 +820,13 @@ static void checksum(int i, dcomplex u1[NZ][NY][NX], int d[3]) {
 /*--------------------------------------------------------------------
 c-------------------------------------------------------------------*/
 
-    int j, q,r,s, ierr;
+    int j, q,r,s;
     dcomplex chk,allchk;
     
     chk.real = 0.0;
     chk.imag = 0.0;
 
-    #pragma acc kernels present_or_copyin(u1) copy(chk)
+    //#pragma acc kernels present_or_copyin(u1) copy(chk)
     for (j = 1; j <= 1024; j++) {
 	q = j%NX+1;
 	if (q >= xstart[0] && q <= xend[0]) {
@@ -842,7 +842,6 @@ c-------------------------------------------------------------------*/
 
 	sums[i].real += chk.real;
 	sums[i].imag += chk.imag;
-    }
 
     /* complex % real */
     sums[i].real = sums[i].real/(double)(NTOTAL);
@@ -862,7 +861,7 @@ static void verify (int d1, int d2, int d3, int nt,
 /*--------------------------------------------------------------------
 c-------------------------------------------------------------------*/
 
-    int ierr, size, i;
+    int size, i;
     double err, epsilon;
 
 /*--------------------------------------------------------------------

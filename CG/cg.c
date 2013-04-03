@@ -11,12 +11,6 @@
   purpose with or without fee is hereby granted.
   This software is provided "as is" without express or implied warranty.
   
-  Send comments on the OpenMP C versions to pdp-openmp@rwcp.or.jp
-
-  Information on OpenMP activities at RWCP is available at:
-
-           http://pdplab.trc.rwcp.or.jp/pdperf/Omni/
-  
   Information on NAS Parallel Benchmarks 2.3 is available at:
   
            http://www.nas.nasa.gov/NAS/NPB/
@@ -153,10 +147,9 @@ c-------------------------------------------------------------------*/
     amult   = 1220703125.0;
     zeta    = randlc( &tran, amult );
 
-#pragma acc data create(colidx,rowstr,iv,arow,acol) \
-    create(v,aelt,a,x,z,p,q,r,w)
+//#pragma acc data create(colidx,rowstr,iv,arow,acol) \
+    //create(v,aelt,a,x,z,p,q,r,w)
 {
-
 /*--------------------------------------------------------------------
 c  
 c-------------------------------------------------------------------*/
@@ -172,8 +165,10 @@ c        So:
 c        Shift the col index vals from actual (firstcol --> lastcol ) 
 c        to local, i.e., (1 --> lastcol-firstcol+1)
 c---------------------------------------------------------------------*/
-    #pragma acc parallel loop copyin(colidx,rowstr)
+    //#pragma acc parallel loop copyin(colidx,rowstr)
+	#pragma acc parallel loop
     for (j = 1; j <= lastrow - firstrow + 1; j++) {
+	#pragma acc loop
 	for (k = rowstr[j]; k < rowstr[j+1]; k++) {
             colidx[k] = colidx[k] - firstcol + 1;
 	}
@@ -182,7 +177,8 @@ c---------------------------------------------------------------------*/
 /*--------------------------------------------------------------------
 c  set starting vector to (1, 1, .... 1)
 c-------------------------------------------------------------------*/
-    #pragma acc parallel loop present(x)
+    #pragma acc parallel loop 
+//present(x)
     for (i = 1; i <= NA+1; i++) {
 	x[i] = 1.0;
     }
@@ -212,8 +208,7 @@ c-------------------------------------------------------------------*/
 	norm_temp11 = 0.0;
 	norm_temp12 = 0.0;
 
-    #pragma acc parallel loop vector \
-        present(x,z) reduction(+:norm_temp11, norm_temp12)
+    //#pragma acc parallel loop present(x,z) reduction(+:norm_temp11, norm_temp12)
 	for (j = 1; j <= lastcol-firstcol+1; j++) {
             norm_temp11 = norm_temp11 + x[j]*z[j];
             norm_temp12 = norm_temp12 + z[j]*z[j];
@@ -224,7 +219,7 @@ c-------------------------------------------------------------------*/
 /*--------------------------------------------------------------------
 c  Normalize z to obtain x
 c-------------------------------------------------------------------*/
-    #pragma acc parallel loop present(x, z)
+    //#pragma acc parallel loop present(x, z)
 	for (j = 1; j <= lastcol-firstcol+1; j++) {
             x[j] = norm_temp12*z[j];
 	}
@@ -234,7 +229,7 @@ c-------------------------------------------------------------------*/
 /*--------------------------------------------------------------------
 c  set starting vector to (1, 1, .... 1)
 c-------------------------------------------------------------------*/
-    #pragma acc parallel loop present(x)
+    //#pragma acc parallel loop present(x)
     for (i = 1; i <= NA+1; i++) {
          x[i] = 1.0;
     }
@@ -268,8 +263,7 @@ c-------------------------------------------------------------------*/
 	norm_temp11 = 0.0;
 	norm_temp12 = 0.0;
 
-    #pragma acc parallel loop vector present(x,z) \
-        reduction(+:norm_temp11, norm_temp12)
+    //#pragma acc parallel loop present(x,z) reduction(+:norm_temp11, norm_temp12)
 	for (j = 1; j <= lastcol-firstcol+1; j++) {
             norm_temp11 = norm_temp11 + x[j]*z[j];
             norm_temp12 = norm_temp12 + z[j]*z[j];
@@ -287,7 +281,7 @@ c-------------------------------------------------------------------*/
 /*--------------------------------------------------------------------
 c  Normalize z to obtain x
 c-------------------------------------------------------------------*/
-    #pragma acc kernels present(x,z)
+    //#pragma acc kernels present(x,z)
 	for (j = 1; j <= lastcol-firstcol+1; j++) {
             x[j] = norm_temp12*z[j];
 	}
@@ -368,7 +362,8 @@ c---------------------------------------------------------------------*/
 /*--------------------------------------------------------------------
 c  Initialize the CG algorithm:
 c-------------------------------------------------------------------*/
-    #pragma acc parallel loop present(q,z,r,p,w) copyin(x[NA+2+1])
+    //#pragma acc parallel loop present(q,z,r,p,w) copyin(x[NA+2+1])
+    #pragma acc parallel loop
     for (j = 1; j <= naa+1; j++) {
 	q[j] = 0.0;
 	z[j] = 0.0;
@@ -381,7 +376,8 @@ c-------------------------------------------------------------------*/
 c  rho = r.r
 c  Now, obtain the norm of r: First, sum squares of r elements locally...
 c-------------------------------------------------------------------*/
-    #pragma acc parallel loop present(x) reduction(+:rho)
+    //#pragma acc parallel loop present(x) reduction(+:rho)
+    #pragma acc parallel loop reduction(+:rho)
     for (j = 1; j <= lastcol-firstcol+1; j++) {
 	rho = rho + x[j]*x[j];
     }
@@ -410,10 +406,11 @@ C        on the Cray t3d - overall speed of code is 1.5 times faster.
 */
 
 /* rolled version */      
-    #pragma acc parallel loop present(a,p,w,colidx,rowstr)
+    //#pragma acc parallel loop present(a,p,w,colidx,rowstr)
+    #pragma acc parallel loop
 	for (j = 1; j <= lastrow-firstrow+1; j++) {
             sum = 0.0;
-        //#pragma acc parallel loop vector reduction(+:sum)
+        #pragma acc loop seq
 	    for (k = rowstr[j]; k < rowstr[j+1]; k++) {
 		sum = sum + a[k]*p[colidx[k]];
 	    }
@@ -421,7 +418,7 @@ C        on the Cray t3d - overall speed of code is 1.5 times faster.
 	}
 	
 /* unrolled-by-two version
-        #pragma acc kernels present(w,colidx) present_or_copyin(rowstr)
+        //#pragma acc kernels present(w,colidx) present_or_copyin(rowstr)
         for (j = 1; j <= lastrow-firstrow+1; j++) {
 	    int iresidue;
 	    double sum1, sum2;
@@ -438,7 +435,7 @@ C        on the Cray t3d - overall speed of code is 1.5 times faster.
         }
 */
 /* unrolled-by-8 version
-        #pragma acc kernels present(w,colidx) present_or_copyin(rowstr)
+        //#pragma acc kernels present(w,colidx) present_or_copyin(rowstr)
         for (j = 1; j <= lastrow-firstrow+1; j++) {
 	    int iresidue;
             i = rowstr[j]; 
@@ -461,7 +458,7 @@ C        on the Cray t3d - overall speed of code is 1.5 times faster.
         }
 */
 
-    #pragma acc parallel loop present(q,w)
+    //#pragma acc parallel loop present(q,w)
 	for (j = 1; j <= lastcol-firstcol+1; j++) {
             q[j] = w[j];
 	}
@@ -469,7 +466,8 @@ C        on the Cray t3d - overall speed of code is 1.5 times faster.
 /*--------------------------------------------------------------------
 c  Clear w for reuse...
 c-------------------------------------------------------------------*/
-    #pragma acc parallel loop present(w)
+    #pragma acc parallel loop 
+//present(w)
 	for (j = 1; j <= lastcol-firstcol+1; j++) {
             w[j] = 0.0;
 	}
@@ -477,7 +475,7 @@ c-------------------------------------------------------------------*/
 /*--------------------------------------------------------------------
 c  Obtain p.q
 c-------------------------------------------------------------------*/
-    #pragma acc parallel loop vector reduction(+:d) present(p,q)
+    //#pragma acc parallel loop vector reduction(+:d) present(p,q)
 	for (j = 1; j <= lastcol-firstcol+1; j++) {
             d = d + p[j]*q[j];
 	}
@@ -496,7 +494,7 @@ c-------------------------------------------------------------------*/
 c  Obtain z = z + alpha*p
 c  and    r = r - alpha*q
 c---------------------------------------------------------------------*/
-    #pragma acc parallel loop present(z,r,p,q)
+    //#pragma acc parallel loop present(z,r,p,q)
 	for (j = 1; j <= lastcol-firstcol+1; j++) {
             z[j] = z[j] + alpha*p[j];
             r[j] = r[j] - alpha*q[j];
@@ -506,7 +504,7 @@ c---------------------------------------------------------------------*/
 c  rho = r.r
 c  Now, obtain the norm of r: First, sum squares of r elements locally...
 c---------------------------------------------------------------------*/
-    #pragma acc parallel loop vector reduction(+:rho)
+    //#pragma acc parallel loop vector reduction(+:rho)
 	for (j = 1; j <= lastcol-firstcol+1; j++) {
             rho = rho + r[j]*r[j];
 	}
@@ -519,7 +517,7 @@ c-------------------------------------------------------------------*/
 /*--------------------------------------------------------------------
 c  p = r + beta*p
 c-------------------------------------------------------------------*/
-    #pragma acc parallel loop present(p,r)
+    //#pragma acc parallel loop present(p,r)
 	for (j = 1; j <= lastcol-firstcol+1; j++) {
             p[j] = r[j] + beta*p[j];
 	}
@@ -532,7 +530,7 @@ c  The partition submatrix-vector multiply
 c---------------------------------------------------------------------*/
     sum = 0.0;
 
-    #pragma acc parallel loop present(w,colidx)
+    //#pragma acc parallel loop present(w,colidx)
     for (j = 1; j <= lastrow-firstrow+1; j++) {
 	d = 0.0;
 	for (k = rowstr[j]; k <= rowstr[j+1]-1; k++) {
@@ -541,7 +539,7 @@ c---------------------------------------------------------------------*/
 	w[j] = d;
     }
 
-    #pragma acc parallel loop present(r,w)
+    //#pragma acc parallel loop present(r,w)
     for (j = 1; j <= lastcol-firstcol+1; j++) {
 	r[j] = w[j];
     }
@@ -549,8 +547,7 @@ c---------------------------------------------------------------------*/
 /*--------------------------------------------------------------------
 c  At this point, r contains A.z
 c-------------------------------------------------------------------*/
-    #pragma acc parallel loop vector \
-        present(x,r) reduction(+:sum)
+    //#pragma acc parallel loop present(x,r) reduction(+:sum)
     for (j = 1; j <= lastcol-firstcol+1; j++) {
 	d = x[j] - r[j];
 	sum = sum + d*d;
@@ -676,7 +673,7 @@ c---------------------------------------------------------------------*/
 c       ... make the sparse matrix from list of elements with duplicates
 c           (v and iv are used as  workspace)
 c---------------------------------------------------------------------*/
-    //#pragma acc data copyin(colidx,arow,acol,aelt,v,iv)
+    ////#pragma acc data copyin(colidx,arow,acol,aelt,v,iv)
     sparse(a, colidx, rowstr, n, arow, acol, aelt,
 	   firstrow, lastrow, v, &(iv[0]), &(iv[n]), nnza);
 }
@@ -715,24 +712,22 @@ c-------------------------------------------------------------------*/
 
 /*--------------------------------------------------------------------
 c     ...count the number of triples in each row
-c-------------------------------------------------------------------*/     
-    //#pragma acc kernels present(rowstr,mark)
-    /* mark is subarray of iv */
-    for (j = 1; j <= n+1; j++) {
-        rowstr[j] = 0;
-        if (j<=n) mark[j] = FALSE;
+c-------------------------------------------------------------------*/
+	//#pragma acc kernels present(rowstr,mark)   
+    for (j = 1; j <= n; j++) {
+	rowstr[j] = 0;
+	mark[j] = FALSE;
     }
+    rowstr[n+1] = 0;
     
-    //#pragma acc kernels present(rowstr,arow)
     for (nza = 1; nza <= nnza; nza++) {
 	j = (arow[nza] - firstrow + 1) + 1;
 	rowstr[j] = rowstr[j] + 1;
     }
 
-    //#pragma acc kernels present(rowstr)
+    rowstr[1] = 1;
     for (j = 2; j <= nrows+1; j++) {
-    if (j == 1) rowstr[1] = 1;
-    else rowstr[j] = rowstr[j] + rowstr[j-1];
+	rowstr[j] = rowstr[j] + rowstr[j-1];
     }
 
 /*---------------------------------------------------------------------
@@ -743,7 +738,6 @@ c---------------------------------------------------------------------*/
 /*--------------------------------------------------------------------
 c     ... do a bucket sort of the triples on the row index
 c-------------------------------------------------------------------*/
-    //#pragma acc kernels present(arow,rowstr,a,aelt,colidx,acol)
     for (nza = 1; nza <= nnza; nza++) {
 	j = arow[nza] - firstrow + 1;
 	k = rowstr[j];
@@ -755,11 +749,10 @@ c-------------------------------------------------------------------*/
 /*--------------------------------------------------------------------
 c       ... rowstr(j) now points to the first element of row j+1
 c-------------------------------------------------------------------*/
-    //#pragma acc kernels present(rowstr)
     for (j = nrows; j >= 1; j--) {
 	rowstr[j+1] = rowstr[j];
-    if (j == 1) rowstr[1] = 1;
     }
+    rowstr[1] = 1;
 
 /*--------------------------------------------------------------------
 c       ... generate the actual output rows by adding elements
@@ -778,7 +771,6 @@ c-------------------------------------------------------------------*/
 /*--------------------------------------------------------------------
 c          ...loop over the jth row of a
 c-------------------------------------------------------------------*/
-    //#pragma acc kernels loop seq present(colidx,mark)
 	for (k = jajp1; k < rowstr[j+1]; k++) {
             i = colidx[k];
             x[i] = x[i] + a[k];

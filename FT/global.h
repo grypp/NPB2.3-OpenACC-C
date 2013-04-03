@@ -110,3 +110,75 @@ static dcomplex sums[NITER_DEFAULT+1]; /* sums(0:niter_default) */
 /* COMMON block: iter */
 static int niter;
 
+// FIXME: Unexpected vector0/worker0 flow graph, now use if and ifnot
+#define FFTZ2(is,l,m,n,ny,ny1,u,x,y) \
+{ \
+    int k,n1,li,lj,lk,ku,i,j,i11,i12,i21,i22; \
+    double x11real, x11imag; \
+    double x21real, x21imag; \
+    dcomplex u1,x11,x21; \
+ \
+    n1 = n / 2; \
+    if (l-1 == 0) lk = 1; \
+    if (l-1 != 0) lk = 2 << ((l - 1)-1); \
+    if (m-l == 0) li = 1; \
+    if (m-l != 0) li = 2 << ((m - l)-1); \
+    lj = 2 * lk; \
+    ku = li; \
+ \
+    /*_Pragma("acc loop seq")*/ \
+    for (i = 0; i < li; i++) { \
+        i11 = i * lk; \
+        i12 = i11 + n1; \
+        i21 = i * lj; \
+        i22 = i21 + lk; \
+        if (is >= 1) { \
+          u1.real = u[ku+i].real; \
+          u1.imag = u[ku+i].imag; \
+        } else { \
+          u1.real = u[ku+i].real; \
+          u1.imag = -u[ku+i].imag; \
+        } \
+ \
+        /*_Pragma("acc loop seq")*/ \
+        for (k = 0; k < lk; k++) { \
+        /*_Pragma("acc loop seq")*/ \
+        for (j = 0; j < ny; j++) { \
+        x11real = x[i11+k][j].real; \
+        x11imag = x[i11+k][j].imag; \
+        x21real = x[i12+k][j].real; \
+        x21imag = x[i12+k][j].imag; \
+        y[i21+k][j].real = x11real + x21real; \
+        y[i21+k][j].imag = x11imag + x21imag; \
+        y[i22+k][j].real = u1.real * (x11real - x21real) \
+            - u1.imag * (x11imag - x21imag); \
+        y[i22+k][j].imag = u1.real * (x11imag - x21imag) \
+            + u1.imag * (x11real - x21real); \
+        } \
+    } \
+    } \
+}
+
+#define CFFTZ(is,m,n,x,y) \
+{ \
+    int i,j,l; \
+ \
+    /*_Pragma("acc loop seq")*/ \
+    for (l = 1; l <= m; l+=2) { \
+        FFTZ2 (is, l, m, n, fftblock, fftblockpad, u, x, y); \
+        if (l == m) break; \
+        FFTZ2 (is, l + 1, m, n, fftblock, fftblockpad, u, y, x); \
+    } \
+ \
+    if (m % 2 == 1) { \
+        /*_Pragma("acc loop")*/ \
+        for (j = 0; j < n; j++) { \
+            /*_Pragma("acc loop")*/ \
+            for (i = 0; i < fftblock; i++) { \
+          x[j][i].real = y[j][i].real; \
+          x[j][i].imag = y[j][i].imag; \
+            } \
+        } \
+    } \
+}
+
