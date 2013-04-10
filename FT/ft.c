@@ -220,14 +220,17 @@ c-------------------------------------------------------------------*/
     int i, j, k;
 
     //#pragma acc kernels present(indexmap,u0,u1)
+    #pragma acc parallel loop
     for (k = 0; k < d[2]; k++) {
-	for (j = 0; j < d[1]; j++) {
+        #pragma acc loop
+        for (j = 0; j < d[1]; j++) {
+            #pragma acc loop
             for (i = 0; i < d[0]; i++) {
           int idx = indexmap[k][j][i];
           u1[k][j][i].real = u0[k][j][i].real * ex[t*idx];
           u1[k][j][i].imag = u0[k][j][i].imag * ex[t*idx];
-	    }
-	}
+            }
+        }
     }
 }
 
