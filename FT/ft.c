@@ -37,27 +37,16 @@ static void evolve(dcomplex u0[NZ][NY][NX], dcomplex u1[NZ][NY][NX],
 static void compute_initial_conditions(dcomplex u0[NZ][NY][NX], int d[3]);
 static void ipow46(double a, int exponent, double *result);
 static void setup(void);
-static void compute_indexmap(int indexmap[NZ][NY][NX]);
+static void compute_indexmap(int indexmap[NZ][NY][NX], int d[3]);
 static void print_timers(void);
 static void fft(int dir, dcomplex x1[NZ][NY][NX], dcomplex x2[NZ][NY][NX]);
 static void cffts1(int is, int d[3], dcomplex x[NZ][NY][NX],
-		   dcomplex xout[NZ][NY][NX],
-		   dcomplex y0[NX][FFTBLOCKPAD],
-		   dcomplex y1[NX][FFTBLOCKPAD]);
+           dcomplex xout[NZ][NY][NX]);
 static void cffts2(int is, int d[3], dcomplex x[NZ][NY][NX],
-		   dcomplex xout[NZ][NY][NX],
-		   dcomplex y0[NX][FFTBLOCKPAD],
-		   dcomplex y1[NX][FFTBLOCKPAD]);
+           dcomplex xout[NZ][NY][NX]);
 static void cffts3(int is, int d[3], dcomplex x[NZ][NY][NX],
-		   dcomplex xout[NZ][NY][NX],
-		   dcomplex y0[NX][FFTBLOCKPAD],
-		   dcomplex y1[NX][FFTBLOCKPAD]);
+           dcomplex xout[NZ][NY][NX]);
 static void fft_init (int n);
-static void cfftz (int is, int m, int n, dcomplex x[NX][FFTBLOCKPAD],
-		   dcomplex y[NX][FFTBLOCKPAD]);
-static void fftz2 (int is, int l, int m, int n, int ny, int ny1,
-		   dcomplex u[NX], dcomplex x[NX][FFTBLOCKPAD],
-		   dcomplex y[NX][FFTBLOCKPAD]);
 static int ilog2(int n);
 static void checksum(int i, dcomplex u1[NZ][NY][NX], int d[3]);
 static void verify (int d1, int d2, int d3, int nt,
@@ -93,11 +82,8 @@ c referenced directly anywhere else. Padding is to avoid accidental
 c cache problems, since all array sizes are powers of two.
 c-------------------------------------------------------------------*/
     static dcomplex u0[NZ][NY][NX];
-    static dcomplex pad1[3];
     static dcomplex u1[NZ][NY][NX];
-    static dcomplex pad2[3];
     static dcomplex u2[NZ][NY][NX];
-    static dcomplex pad3[3];
     static int indexmap[NZ][NY][NX];
     
     int iter;
@@ -115,11 +101,14 @@ c-------------------------------------------------------------------*/
     }
     setup();
 
-//#pragma acc data create(indexmap,uo,u1,u2) copyin(xstart, ystart, zstart, dims)
+#pragma acc data create(indexmap,u0,u1,u2) \
+    copyin(dims,xstart,ystart,zstart,xend,yend,zend)
 {
-    compute_indexmap(indexmap);
+    compute_indexmap(indexmap, dims[2]);
 
+    /* Compute u1 on host */
     compute_initial_conditions(u1, dims[0]);
+    #pragma acc update device(u1)
 
     fft_init (dims[0][0]);
 
@@ -136,9 +125,11 @@ c-------------------------------------------------------------------*/
     timer_start(T_TOTAL);
     if (TIMERS_ENABLED == TRUE) timer_start(T_SETUP);
 
-    compute_indexmap(indexmap);
+    compute_indexmap(indexmap, dims[2]);
 
+    /* Compute u1 on host */
     compute_initial_conditions(u1, dims[0]);
+    #pragma acc update device(u1)
     
     fft_init (dims[0][0]);
 
@@ -219,8 +210,7 @@ c-------------------------------------------------------------------*/
 
     int i, j, k;
 
-    //#pragma acc kernels present(indexmap,u0,u1)
-    #pragma acc parallel loop
+    #pragma acc parallel loop present(u0,u1) copyin(ex)
     for (k = 0; k < d[2]; k++) {
         #pragma acc loop
         for (j = 0; j < d[1]; j++) {
@@ -229,8 +219,8 @@ c-------------------------------------------------------------------*/
           int idx = indexmap[k][j][i];
           u1[k][j][i].real = u0[k][j][i].real * ex[t*idx];
           u1[k][j][i].imag = u0[k][j][i].imag * ex[t*idx];
-            }
-        }
+	    }
+	}
     }
 }
 
@@ -381,7 +371,7 @@ c-------------------------------------------------------------------*/
 /*--------------------------------------------------------------------
 c-------------------------------------------------------------------*/
 
-static void compute_indexmap(int indexmap[NZ][NY][NX]) {
+static void compute_indexmap(int indexmap[NZ][NY][NX], int d[3]) {
 
 /*--------------------------------------------------------------------
 c-------------------------------------------------------------------*/
@@ -393,6 +383,9 @@ c-------------------------------------------------------------------*/
 
     int i, j, k, ii, ii2, jj, ij2, kk;
     double ap;
+    int dims20 = dims[2][0];
+    int dims21 = dims[2][1];
+    int dims22 = dims[2][2];
 
 /*--------------------------------------------------------------------
 c basically we want to convert the fortran indices 
@@ -403,17 +396,16 @@ c The following magic formula does the trick:
 c mod(i-1+n/2, n) - n/2
 c-------------------------------------------------------------------*/
 
-    //#pragma acc kernels present_or_create(indexmap) present_or_copyin(xstart, ystart, zstart, dims)
-    //#pragma acc parallel loop copy(indexmap[0:NZ][0:NY][0:NX])
-    for (i = 0; i < dims[2][0]; i++) {
+    #pragma acc kernels loop present(indexmap)
+    for (i = 0; i < dims20; i++) {
 	ii =  (i+1+xstart[2]-2+NX/2)%NX - NX/2;
 	ii2 = ii*ii;
-    //#pragma acc loop seq
-	for (j = 0; j < dims[2][1]; j++) {
+    #pragma acc loop seq
+	for (j = 0; j < dims21; j++) {
             jj = (j+1+ystart[2]-2+NY/2)%NY - NY/2;
             ij2 = jj*jj+ii2;
-            //#pragma acc loop seq
-            for (k = 0; k < dims[2][2]; k++) {
+            #pragma acc loop seq
+            for (k = 0; k < dims22; k++) {
 		kk = (k+1+zstart[2]-2+NZ/2)%NZ - NZ/2;
 		indexmap[k][j][i] = kk*kk+ij2;
 	    }
@@ -463,30 +455,21 @@ c-------------------------------------------------------------------*/
 static void fft(int dir, dcomplex x1[NZ][NY][NX], dcomplex x2[NZ][NY][NX]) {
 
 /*--------------------------------------------------------------------
-c-------------------------------------------------------------------*/
-
-    dcomplex y0[NX][FFTBLOCKPAD];
-    dcomplex y1[NX][FFTBLOCKPAD];
-
-/*--------------------------------------------------------------------
 c note: args x1, x2 must be different arrays
 c note: args for cfftsx are (direction, layout, xin, xout, scratch)
 c       xin/xout may be the same and it can be somewhat faster
 c       if they are
 c-------------------------------------------------------------------*/
 
-//#pragma acc data create(y0,y1)
-{
     if (dir == 1) {
-        cffts1(1, dims[0], x1, x1, y0, y1);	/* x1 -> x1 */
-        cffts2(1, dims[1], x1, x1, y0, y1);	/* x1 -> x1 */
-        cffts3(1, dims[2], x1, x2, y0, y1);	/* x1 -> x2 */
+        cffts1(1, dims[0], x1, x1);	/* x1 -> x1 */
+        cffts2(1, dims[1], x1, x1);	/* x1 -> x1 */
+        cffts3(1, dims[2], x1, x2);	/* x1 -> x2 */
     } else {
-	cffts3(-1, dims[2], x1, x1, y0, y1);	/* x1 -> x1 */
-        cffts2(-1, dims[1], x1, x1, y0, y1);	/* x1 -> x1 */
-        cffts1(-1, dims[0], x1, x2, y0, y1);	/* x1 -> x2 */
+        cffts3(-1, dims[2], x1, x1);	/* x1 -> x1 */
+        cffts2(-1, dims[1], x1, x1);	/* x1 -> x1 */
+        cffts1(-1, dims[0], x1, x2);	/* x1 -> x2 */
     }
-} /* end acc data */
 }
 
 
@@ -494,43 +477,42 @@ c-------------------------------------------------------------------*/
 c-------------------------------------------------------------------*/
 
 static void cffts1(int is, int d[3], dcomplex x[NZ][NY][NX],
-		   dcomplex xout[NZ][NY][NX],
-		   dcomplex y0[NX][FFTBLOCKPAD],
-		   dcomplex y1[NX][FFTBLOCKPAD]) {
+           dcomplex xout[NZ][NY][NX]) {
 
 /*--------------------------------------------------------------------
 c-------------------------------------------------------------------*/
 
-    int logd[3];
+    int logd0;
+    int d0 = d[0];
+    int d1 = d[1];
+    int d2 = d[2];
     int i, j, k, jj;
 
-    for (i = 0; i < 3; i++) {
-	logd[i] = ilog2(d[i]);
-    }
+    logd0 = ilog2(d0);
 
-    //#pragma acc kernels present_or_create(x, xout, y0, y1) copyin(logd)
-    //#pragma acc parallel loop present(y0[0:NX][0:FFTBLOCKPAD],y1[0:NX][0:FFTBLOCKPAD]) \
-        //copy(x[0:NZ][0:NY][0:NX],xout[0:NZ][0:NY][0:NX]) copyin(logd)
-    for (k = 0; k < d[2]; k++) {
-    //#pragma acc loop seq
-    for (jj = 0; jj <= d[1] - fftblock; jj+=fftblock) {
-            //#pragma acc loop seq
+    #pragma acc parallel loop present(x,xout)
+    for (k = 0; k < d2; k++) {
+    dcomplex y0[NX][FFTBLOCKPAD];
+    dcomplex y1[NX][FFTBLOCKPAD];
+    #pragma acc loop seq
+    for (jj = 0; jj <= d1 - fftblock; jj+=fftblock) {
+            #pragma acc loop
             for (j = 0; j < fftblock; j++) {
-        //#pragma acc loop
-        for (i = 0; i < d[0]; i++) {
-            y0[i][j].real = x[k][j+jj][i].real;
-            y0[i][j].imag = x[k][j+jj][i].imag;
-        }
+        for (i = 0; i < d0; i++) {
+		    y0[i][j].real = x[k][j+jj][i].real;
+		    y0[i][j].imag = x[k][j+jj][i].imag;
+		}
         }
 
-            cfftz (is, logd[0], d[0], y0, y1);
-            //#pragma acc loop seq
+            CFFTZ (is, logd0,
+           d0, y0, y1);
+
+            #pragma acc loop
             for (j = 0; j < fftblock; j++) {
-        //#pragma acc loop
-        for (i = 0; i < d[0]; i++) {
-          xout[k][j+jj][i].real = y0[i][j].real;
-          xout[k][j+jj][i].imag = y0[i][j].imag;
-        }
+        for (i = 0; i < d0; i++) {
+		  xout[k][j+jj][i].real = y0[i][j].real;
+		  xout[k][j+jj][i].imag = y0[i][j].imag;
+		}
         }
     }
     }
@@ -541,43 +523,43 @@ c-------------------------------------------------------------------*/
 c-------------------------------------------------------------------*/
 
 static void cffts2(int is, int d[3], dcomplex x[NZ][NY][NX],
-		   dcomplex xout[NZ][NY][NX],
-		   dcomplex y0[NX][FFTBLOCKPAD],
-		   dcomplex y1[NX][FFTBLOCKPAD]) {
+           dcomplex xout[NZ][NY][NX]) {
 
 /*--------------------------------------------------------------------
 c-------------------------------------------------------------------*/
 
-    int logd[3];
+    int logd1;
+    int d0 = d[0];
+    int d1 = d[1];
+    int d2 = d[2];
     int i, j, k, ii;
 
-    for (i = 0; i < 3; i++) {
-	logd[i] = ilog2(d[i]);
-    }
-    //#pragma acc kernels present_or_create(x, xout, y0, y1) copyin(logd)
-    //#pragma acc parallel loop present(y0[0:NX][0:FFTBLOCKPAD],y1[0:NX][0:FFTBLOCKPAD]) \
-        //copy(x[0:NZ][0:NY][0:NX],xout[0:NZ][0:NY][0:NX])
-    for (k = 0; k < d[2]; k++) {
-        //#pragma acc loop seq
-        for (ii = 0; ii <= d[0] - fftblock; ii+=fftblock) {
-        //#pragma acc loop
-	    for (j = 0; j < d[1]; j++) {
-        //#pragma acc loop seq
+    logd1 = ilog2(d1);
+
+    #pragma acc parallel loop present(x,xout)
+    for (k = 0; k < d2; k++) {
+        dcomplex y0[NX][FFTBLOCKPAD];
+        dcomplex y1[NX][FFTBLOCKPAD];
+        #pragma acc loop seq
+        for (ii = 0; ii <= d0 - fftblock; ii+=fftblock) {
+        #pragma acc loop
+        for (j = 0; j < d1; j++) {
 		for (i = 0; i < fftblock; i++) {
 		    y0[j][i].real = x[k][j][i+ii].real;
 		    y0[j][i].imag = x[k][j][i+ii].imag;
 		}
-        }
+	    }
 
-        cfftz (is, logd[1], d[1], y0, y1);
-           //#pragma acc loop
-           for (j = 0; j < d[1]; j++) {
-           //#pragma acc loop seq
+        CFFTZ (is, logd1,
+           d1, y0, y1);
+
+           #pragma acc loop
+           for (j = 0; j < d1; j++) {
 	       for (i = 0; i < fftblock; i++) {
 		   xout[k][j][i+ii].real = y0[j][i].real;
 		   xout[k][j][i+ii].imag = y0[j][i].imag;
 	       }
-       }
+	   }
 	}
     }
 }
@@ -586,43 +568,43 @@ c-------------------------------------------------------------------*/
 c-------------------------------------------------------------------*/
 
 static void cffts3(int is, int d[3], dcomplex x[NZ][NY][NX],
-		   dcomplex xout[NZ][NY][NX],
-		   dcomplex y0[NX][FFTBLOCKPAD],
-		   dcomplex y1[NX][FFTBLOCKPAD]) {
+           dcomplex xout[NZ][NY][NX]) {
 
 /*--------------------------------------------------------------------
 c-------------------------------------------------------------------*/
 
-    int logd[3];
+    int logd2;
+    int d0 = d[0];
+    int d1 = d[1];
+    int d2 = d[2];
     int i, j, k, ii;
 
-    for (i = 0;i < 3; i++) {
-	logd[i] = ilog2(d[i]);
-    }
-    //#pragma acc kernels present_or_create(x, xout, y0, y1) copyin(logd)
-    //#pragma acc parallel loop copy(y0[0:NX][0:FFTBLOCKPAD],y1[0:NX][0:FFTBLOCKPAD]) \
-        //copy(x[0:NZ][0:NY][0:NX],xout[0:NZ][0:NY][0:NX])
-    for (j = 0; j < d[1]; j++) {
-        //#pragma acc loop seq
-        for (ii = 0; ii <= d[0] - fftblock; ii+=fftblock) {
-        //#pragma acc loop
-	    for (k = 0; k < d[2]; k++) {
-        //#pragma acc loop seq
+    logd2 = ilog2(d2);
+
+    #pragma acc parallel loop present(x,xout)
+    for (j = 0; j < d1; j++) {
+        dcomplex y0[NX][FFTBLOCKPAD];
+        dcomplex y1[NX][FFTBLOCKPAD];
+        #pragma acc loop seq
+        for (ii = 0; ii <= d0 - fftblock; ii+=fftblock) {
+        #pragma acc loop
+        for (k = 0; k < d2; k++) {
 		for (i = 0; i < fftblock; i++) {
 		    y0[k][i].real = x[k][j][i+ii].real;
 		    y0[k][i].imag = x[k][j][i+ii].imag;
 		}
 	    }
 
-           cfftz (is, logd[2], d[2], y0, y1);
-           //#pragma acc loop
-           for (k = 0; k < d[2]; k++) {
-           //#pragma acc loop seq
+           CFFTZ (is, logd2,
+          d2, y0, y1);
+
+           #pragma acc loop
+           for (k = 0; k < d2; k++) {
 	       for (i = 0; i < fftblock; i++) {
 		   xout[k][j][i+ii].real = y0[k][i].real;
 		   xout[k][j][i+ii].imag = y0[k][i].imag;
 	       }
-       }
+	   }
 	}
     }
 }
@@ -673,127 +655,6 @@ c-------------------------------------------------------------------*/
 /*--------------------------------------------------------------------
 c-------------------------------------------------------------------*/
 
-static void cfftz (int is, int m, int n, dcomplex x[NX][FFTBLOCKPAD],
-		   dcomplex y[NX][FFTBLOCKPAD]) {
-
-/*--------------------------------------------------------------------
-c-------------------------------------------------------------------*/
-
-/*--------------------------------------------------------------------
-c   Computes NY N-point complex-to-complex FFTs of X using an algorithm due
-c   to Swarztrauber.  X is both the input and the output array, while Y is a 
-c   scratch array.  It is assumed that N = 2^M.  Before calling CFFTZ to 
-c   perform FFTs, the array U must be initialized by calling CFFTZ with IS 
-c   set to 0 and M set to MX, where MX is the maximum value of M for any 
-c   subsequent call.
-c-------------------------------------------------------------------*/
-
-    int i,j,l;
-
-/*--------------------------------------------------------------------
-c   Perform one variant of the Stockham FFT.
-c-------------------------------------------------------------------*/
-    #pragma acc loop seq
-    for (l = 1; l <= m; l+=2) {
-        fftz2 (is, l, m, n, fftblock, fftblockpad, u, x, y);
-        if (l == m) break;
-	fftz2 (is, l + 1, m, n, fftblock, fftblockpad, u, y, x);
-    }
-
-/*--------------------------------------------------------------------
-c   Copy Y to X.
-c-------------------------------------------------------------------*/
-    if (m % 2 == 1) {
-    #pragma acc loop
-	for (j = 0; j < n; j++) {
-        #pragma acc loop
-	    for (i = 0; i < fftblock; i++) {
-		x[j][i].real = y[j][i].real;
-		x[j][i].imag = y[j][i].imag;
-	    }
-	}
-    }
-}
-
-
-/*--------------------------------------------------------------------
-c-------------------------------------------------------------------*/
-
-static void fftz2 (int is, int l, int m, int n, int ny, int ny1,
-		   dcomplex u[NX], dcomplex x[NX][FFTBLOCKPAD],
-		   dcomplex y[NX][FFTBLOCKPAD]) {
-
-/*--------------------------------------------------------------------
-c-------------------------------------------------------------------*/
-
-/*--------------------------------------------------------------------
-c   Performs the L-th iteration of the second variant of the Stockham FFT.
-c-------------------------------------------------------------------*/
-
-    int k,n1,li,lj,lk,ku,i,j,i11,i12,i21,i22;
-    dcomplex u1,x11,x21;
-
-/*--------------------------------------------------------------------
-c   Set initial parameters.
-c-------------------------------------------------------------------*/
-
-    n1 = n / 2;
-    if (l-1 == 0) {
-	lk = 1;
-    } else {
-	lk = 2 << ((l - 1)-1);
-    }
-    if (m-l == 0) {
-	li = 1;
-    } else {
-	li = 2 << ((m - l)-1);
-    }
-    lj = 2 * lk;
-    ku = li;
-
-    #pragma acc loop seq
-    for (i = 0; i < li; i++) {
-      
-        i11 = i * lk;
-        i12 = i11 + n1;
-        i21 = i * lj;
-        i22 = i21 + lk;
-        if (is >= 1) {
-          u1.real = u[ku+i].real;
-          u1.imag = u[ku+i].imag;
-        } else {
-          u1.real = u[ku+i].real;
-          u1.imag = -u[ku+i].imag;
-        }
-
-/*--------------------------------------------------------------------
-c   This loop is vectorizable.
-c-------------------------------------------------------------------*/
-        #pragma acc loop seq
-        for (k = 0; k < lk; k++) {
-        #pragma acc loop seq
-	    for (j = 0; j < ny; j++) {
-		double x11real, x11imag;
-		double x21real, x21imag;
-		x11real = x[i11+k][j].real;
-		x11imag = x[i11+k][j].imag;
-		x21real = x[i12+k][j].real;
-		x21imag = x[i12+k][j].imag;
-		y[i21+k][j].real = x11real + x21real;
-		y[i21+k][j].imag = x11imag + x21imag;
-		y[i22+k][j].real = u1.real * (x11real - x21real)
-		    - u1.imag * (x11imag - x21imag);
-		y[i22+k][j].imag = u1.real * (x11imag - x21imag)
-		    + u1.imag * (x11real - x21real);
-	    }
-	}
-    }
-}
-
-
-/*--------------------------------------------------------------------
-c-------------------------------------------------------------------*/
-
 static int ilog2(int n) {
 
 /*--------------------------------------------------------------------
@@ -824,31 +685,32 @@ static void checksum(int i, dcomplex u1[NZ][NY][NX], int d[3]) {
 c-------------------------------------------------------------------*/
 
     int j, q,r,s;
-    dcomplex chk,allchk;
-    
-    chk.real = 0.0;
-    chk.imag = 0.0;
+    double chkreal, chkimag;
+    int xstart0 = xstart[0], xend0 = xend[0];
+    int ystart0 = ystart[0], yend0 = yend[0];
+    int zstart0 = zstart[0], zend0 = zend[0];
 
-    //#pragma acc kernels present_or_copyin(u1) copy(chk)
+    chkreal = 0.0;
+    chkimag = 0.0;
+
+    #pragma acc kernels loop reduction(+:chkreal,chkimag) copyin(u1[0:NZ][0:NY][0:NX])
     for (j = 1; j <= 1024; j++) {
-	q = j%NX+1;
-	if (q >= xstart[0] && q <= xend[0]) {
+    q = j%NX+1;
+    if (q >= xstart0 && q <= xend0) {
             r = (3*j)%NY+1;
-            if (r >= ystart[0] && r <= yend[0]) {
+            if (r >= ystart0 && r <= yend0) {
 		s = (5*j)%NZ+1;
-		if (s >= zstart[0] && s <= zend[0]) {
-		  cadd(chk,chk,u1[s-zstart[0]][r-ystart[0]][q-xstart[0]]);
+        if (s >= zstart0 && s <= zend0) {
+          chkreal += u1[s-zstart0][r-ystart0][q-xstart0].real;
+          chkimag += u1[s-zstart0][r-ystart0][q-xstart0].imag;
 		}
 	    }
-	}
+    }
     }
 
-	sums[i].real += chk.real;
-	sums[i].imag += chk.imag;
-
     /* complex % real */
-    sums[i].real = sums[i].real/(double)(NTOTAL);
-    sums[i].imag = sums[i].imag/(double)(NTOTAL);
+    sums[i].real = chkreal/(double)(NTOTAL);
+    sums[i].imag = chkimag/(double)(NTOTAL);
 
     printf("T = %5d     Checksum = %22.12e %22.12e\n",
 	   i, sums[i].real, sums[i].imag);
