@@ -201,7 +201,7 @@ c   sure these initializations cannot be eliminated as dead code.
 /*      For each thread on GPU.           */
 
     #pragma acc parallel loop present(q,partial_sx,partial_sy) \
-        reduction(sx,sy,gc)
+        reduction(+:sx,sy,gc)
     for (nn = 0; nn < NN; nn++) {
         double t1, t2, t3, t4, x1, x2;
         double xx[2*NK], qq[NQ];
