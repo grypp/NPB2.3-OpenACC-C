@@ -4,18 +4,12 @@
 
   This benchmark is an OpenACC C version of the NPB BT code.
   
-  The OpenMP C versions are developed by RWCP and derived from the serial
-  Fortran versions in "NPB 2.3-serial" developed by NAS.
+  The OpenACC C versions are derived from OpenMP C versions 
+  in "NPB 2.3-omp" developed by NAS.
 
   Permission to use, copy, distribute and modify this software for any
   purpose with or without fee is hereby granted.
   This software is provided "as is" without express or implied warranty.
-  
-  Send comments on the OpenMP C versions to pdp-openmp@rwcp.or.jp
-
-  Information on OpenMP activities at RWCP is available at:
-
-           http://pdplab.trc.rwcp.or.jp/pdperf/Omni/
   
   Information on NAS Parallel Benchmarks 2.3 is available at:
   
@@ -118,9 +112,8 @@ c-------------------------------------------------------------------*/
 
   set_constants();
 
-#pragma acc data create(u,ue,forcing,cuf,buf,q) \
-  create(us,vs,ws,qs,rho_i,square,lhs,rhs,fjac,njac) \
-  copyin(grid_points,ce)
+#pragma acc data create(u,forcing,us,vs,ws,qs) \
+  create(rho_i,square,lhs,rhs,fjac,njac) copyin(grid_points,ce)
 {
   initialize();
 
@@ -139,7 +132,6 @@ c-------------------------------------------------------------------*/
   timer_start(1);
 
 
-  #pragma acc data copyout(u)
   for (step = 1; step <= niter; step++) {
 
     if (step%20 == 0 || step == 1) {
@@ -148,6 +140,7 @@ c-------------------------------------------------------------------*/
 
     adi();
   }
+  #pragma acc update host(u)
 
   timer_stop(1);
   tmax = timer_read(1);
@@ -530,9 +523,14 @@ c-------------------------------------------------------------------*/
 /*--------------------------------------------------------------------
 c     zeta-direction flux differences                      
 c-------------------------------------------------------------------*/
-  #pragma acc parallel loop present(ue, cuf, buf, q, grid_points, forcing) \
+  #pragma acc parallel loop present(grid_points, forcing) \
     present_or_create(dtemp)
   for (i = 1; i < grid_points[0]-1; i++) {
+    double cuf[PROBLEM_SIZE];
+    double q[PROBLEM_SIZE];
+    double ue[PROBLEM_SIZE][5];
+    double buf[PROBLEM_SIZE][5];
+
     xi = (double)i * dnxm1;
     
     #pragma acc loop
