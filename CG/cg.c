@@ -358,6 +358,8 @@ c  Floaging point arrays here are named as in NPB1 spec discussion of
 c  CG algorithm
 c---------------------------------------------------------------------*/
 {
+    const int INIT_KERNEL = 1;
+	const int RESET_W_KERNEL = 2;
     static double d, sum, rho, rho0, alpha, beta;
     int i, j, k;
     int cgit, cgitmax = 25;
@@ -367,7 +369,7 @@ c---------------------------------------------------------------------*/
 /*--------------------------------------------------------------------
 c  Initialize the CG algorithm:
 c-------------------------------------------------------------------*/
-    #pragma acc parallel loop
+    #pragma acc parallel loop async(INIT_KERNEL)
     for (j = 1; j <= naa+1; j++) {
       double xj = x[j];
       q[j] = 0.0;
@@ -386,6 +388,8 @@ c-------------------------------------------------------------------*/
       double xj = x[j];
       rho = rho + xj*xj;
     }
+    
+	#pragma acc wait(INIT_KERNEL)
 
 /*--------------------------------------------------------------------
 c---->
@@ -415,7 +419,7 @@ C        on the Cray t3d - overall speed of code is 1.5 times faster.
     #pragma acc parallel loop present(a[0:NZ+1],p[0:NA+2+1],colidx[0:NZ+1])
 	for (j = 1; j <= lastrow-firstrow+1; j++) {
 		sum = 0.0;
-		#pragma acc loop seq
+		#pragma acc loop reduction(+:sum)
 		for (k = rowstr[j]; k < rowstr[j+1]; k++) {
 		sum = sum + a[k]*p[colidx[k]];
 		}
@@ -467,7 +471,7 @@ C        on the Cray t3d - overall speed of code is 1.5 times faster.
 /*--------------------------------------------------------------------
 c  Clear w for reuse...
 c-------------------------------------------------------------------*/
-    #pragma acc parallel loop
+    #pragma acc parallel loop async(RESET_W_KERNEL)
 	for (j = 1; j <= lastcol-firstcol+1; j++) {
             w[j] = 0.0;
 	}
@@ -479,6 +483,8 @@ c-------------------------------------------------------------------*/
 	for (j = 1; j <= lastcol-firstcol+1; j++) {
             d = d + p[j]*q[j];
 	}
+	
+	#pragma acc wait(RESET_W_KERNEL)
 
 /*--------------------------------------------------------------------
 c  Obtain alpha = rho / (p.q)
@@ -528,7 +534,7 @@ c---------------------------------------------------------------------*/
     #pragma acc parallel loop
     for (j = 1; j <= lastrow-firstrow+1; j++) {
 	d = 0.0;
-	#pragma acc loop seq
+	#pragma acc loop reduction(+:d)
 	for (k = rowstr[j]; k <= rowstr[j+1]-1; k++) {
             d = d + a[k]*z[colidx[k]];
 	}
