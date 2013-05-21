@@ -366,19 +366,25 @@ c---------------------------------------------------------------------*/
     
 /*--------------------------------------------------------------------
 c  Initialize the CG algorithm:
+c-------------------------------------------------------------------*/
+    #pragma acc parallel loop
+    for (j = 1; j <= naa+1; j++) {
+      double xj = x[j];
+      q[j] = 0.0;
+      z[j] = 0.0;
+      r[j] = xj;
+      p[j] = xj;
+      w[j] = 0.0;
+    }
+
+/*--------------------------------------------------------------------
 c  rho = r.r
 c  Now, obtain the norm of r: First, sum squares of r elements locally...
 c-------------------------------------------------------------------*/
     #pragma acc parallel loop reduction(+:rho)
-    for (j = 1; j <= naa+1; j++) {
-	double xj = x[j];
-	q[j] = 0.0;
-	z[j] = 0.0;
-	r[j] = xj;
-	p[j] = xj;
-	w[j] = 0.0;
-	
-	rho = rho + xj*xj;
+    for (j = 1; j <= lastcol-firstcol+1; j++) {
+      double xj = x[j];
+      rho = rho + xj*xj;
     }
 
 /*--------------------------------------------------------------------
