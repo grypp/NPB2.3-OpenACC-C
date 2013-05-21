@@ -213,8 +213,9 @@ c-------------------------------------------------------------------*/
 
 	#pragma acc parallel loop reduction(+:norm_temp11,norm_temp12)
 	for (j = 1; j <= lastcol-firstcol+1; j++) {
-            norm_temp11 = norm_temp11 + x[j]*z[j];
-            norm_temp12 = norm_temp12 + z[j]*z[j];
+            double zj = z[j];
+            norm_temp11 = norm_temp11 + x[j]*zj;
+            norm_temp12 = norm_temp12 + zj*zj;
 	}
 
 	norm_temp12 = 1.0 / sqrt( norm_temp12 );
@@ -268,8 +269,9 @@ c-------------------------------------------------------------------*/
 
     #pragma acc parallel loop reduction(+:norm_temp11,norm_temp12)
 	for (j = 1; j <= lastcol-firstcol+1; j++) {
-            norm_temp11 = norm_temp11 + x[j]*z[j];
-            norm_temp12 = norm_temp12 + z[j]*z[j];
+            double zj = z[j];
+            norm_temp11 = norm_temp11 + x[j]*zj;
+            norm_temp12 = norm_temp12 + zj*zj;
 	}
 
 	norm_temp12 = 1.0 / sqrt( norm_temp12 );
@@ -364,23 +366,18 @@ c---------------------------------------------------------------------*/
     
 /*--------------------------------------------------------------------
 c  Initialize the CG algorithm:
-c-------------------------------------------------------------------*/
-    #pragma acc kernels
-    for (j = 1; j <= naa+1; j++) {
-	q[j] = 0.0;
-	z[j] = 0.0;
-	r[j] = x[j];
-	p[j] = r[j];
-	w[j] = 0.0;
-    }
-
-/*--------------------------------------------------------------------
 c  rho = r.r
 c  Now, obtain the norm of r: First, sum squares of r elements locally...
 c-------------------------------------------------------------------*/
     #pragma acc parallel loop reduction(+:rho)
-    for (j = 1; j <= lastcol-firstcol+1; j++) {
+    for (j = 1; j <= naa+1; j++) {
 	double xj = x[j];
+	q[j] = 0.0;
+	z[j] = 0.0;
+	r[j] = xj;
+	p[j] = xj;
+	w[j] = 0.0;
+	
 	rho = rho + xj*xj;
     }
 
@@ -417,6 +414,7 @@ C        on the Cray t3d - overall speed of code is 1.5 times faster.
 		sum = sum + a[k]*p[colidx[k]];
 		}
 		w[j] = sum;
+		q[j] = sum;
 	}
 	
 /* unrolled-by-two version
@@ -433,6 +431,7 @@ C        on the Cray t3d - overall speed of code is 1.5 times faster.
 		sum2 = sum2 + a[k+1] * p[colidx[k+1]];
 	    }
             w[j] = sum1 + sum2;
+            q[j] = sum1 + sum2;
         }
 */
 /* unrolled-by-8 version
@@ -455,13 +454,9 @@ C        on the Cray t3d - overall speed of code is 1.5 times faster.
                           + a[k+7] * p[colidx[k+7]];
             }
             w[j] = sum;
+            q[j] = sum;
         }
 */
-
-	#pragma acc kernels
-	for (j = 1; j <= lastcol-firstcol+1; j++) {
-            q[j] = w[j];
-	}
 
 /*--------------------------------------------------------------------
 c  Clear w for reuse...
@@ -492,23 +487,17 @@ c-------------------------------------------------------------------*/
 /*---------------------------------------------------------------------
 c  Obtain z = z + alpha*p
 c  and    r = r - alpha*q
-c---------------------------------------------------------------------*/
-	#pragma acc kernels
-	for (j = 1; j <= lastcol-firstcol+1; j++) {
-            z[j] = z[j] + alpha*p[j];
-            r[j] = r[j] - alpha*q[j];
-	}
-            
-/*---------------------------------------------------------------------
 c  rho = r.r
 c  Now, obtain the norm of r: First, sum squares of r elements locally...
 c---------------------------------------------------------------------*/
 	#pragma acc parallel loop reduction(+:rho)
 	for (j = 1; j <= lastcol-firstcol+1; j++) {
-            double rj = r[j];
-            rho = rho + rj*rj;
+            double new_rj = r[j] - alpha*q[j];
+            z[j] = z[j] + alpha*p[j];
+            r[j] = new_rj;
+			rho = rho + new_rj*new_rj;
 	}
-
+            
 /*--------------------------------------------------------------------
 c  Obtain beta:
 c-------------------------------------------------------------------*/
@@ -538,11 +527,7 @@ c---------------------------------------------------------------------*/
             d = d + a[k]*z[colidx[k]];
 	}
 	w[j] = d;
-    }
-
-    #pragma acc kernels
-    for (j = 1; j <= lastcol-firstcol+1; j++) {
-	r[j] = w[j];
+	r[j] = d;
     }
 
 /*--------------------------------------------------------------------
