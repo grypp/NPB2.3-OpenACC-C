@@ -40,15 +40,6 @@
 #define	A		1220703125.0
 #define	S		271828183.0
 
-//#define USE_Q
-
-/* global variables */
-/* common /storage/ */
-static double x[2*NK];
-static double xx[NN][2*NK];
-static double q[NQ];
-static double qq[NN][NQ];
-
 #if defined(USE_POW)
 #define r23 pow(0.5, 23.0)
 #define r46 (r23*r23)
@@ -95,6 +86,8 @@ c   not affect the results.
 */
 int main(int argc, char **argv) {
 
+    double *x, **xx, *q, **qq;
+
     double Mops, t1, t2, t3, t4, x1, x2, sx, sy, tm, an, tt, gc;
     double dum[3] = { 1.0, 1.0, 1.0 };
     const int TRANSFER_X = 1;
@@ -104,6 +97,17 @@ int main(int argc, char **argv) {
     double loc_a1,loc_a2,loc_x1,loc_x2,loc_z;
     boolean verified;
     char size[13+1];	/* character*13 */
+    
+/*     Allocate working memory       */
+
+    x = (double*) malloc(sizeof(double) * 2*NK);
+    xx = (double**) malloc(sizeof(double*) * NN);
+    xx[0] = (double*) malloc(sizeof(double) * NN * 2*NK);
+    for (i = 1; i < NN; i++) xx[i] = xx[i-1] + (2*NK);
+    q = (double*) malloc(sizeof(double) * NQ);
+    qq = (double**) malloc(sizeof(double*) * NN);
+    qq[0] = (double*) malloc(sizeof(double) * NN * NQ);
+    for (i = 1; i < NN; i++) qq[i] = qq[i-1] + NQ;
 
 /*
 c   Because the size of the problem is too large to store in a 32-bit
@@ -174,7 +178,7 @@ c   sure these initializations cannot be eliminated as dead code.
       /* Initialize private x (xx)  */
       #pragma acc loop
       for (i = 0; i < 2*NK; i++)
-         xx[k][i] = x[i];
+          xx[k][i] = x[i];
     }
       
 /*
