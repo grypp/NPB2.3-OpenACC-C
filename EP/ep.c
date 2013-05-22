@@ -40,11 +40,14 @@
 #define	A		1220703125.0
 #define	S		271828183.0
 
+//#define USE_Q
+
 /* global variables */
 /* common /storage/ */
 static double x[2*NK];
+static double xx[NN][2*NK];
 static double q[NQ];
-static double partial_sx[NN], partial_sy[NN];
+static double qq[NN][NQ];
 
 #if defined(USE_POW)
 #define r23 pow(0.5, 23.0)
@@ -58,51 +61,24 @@ static double partial_sx[NN], partial_sy[NN];
 #define t46 (t23*t23)
 #endif
 
-#define RANDLC(r,x,a) \
-{ \
-    double t1,t2,t3,t4,a1,a2,x1,x2,z; \
- \
-    t1 = r23 * (a); \
-    a1 = (int)t1; \
-    a2 = (a) - t23 * a1; \
-\
-    t1 = r23 * (x); \
-    x1 = (int)t1; \
-    x2 = (x) - t23 * x1; \
-    t1 = a1 * x2 + a2 * x1; \
-    t2 = (int)(r23 * t1); \
-    z = t1 - t23 * t2; \
-    t3 = t23 * z + a2 * x2; \
-    t4 = (int)(r46 * t3); \
-    (x) = t3 - t46 * t4; \
- \
-    (r) = (r46 * (x)); \
-}
+inline double RANDLC (double *x, double a) {
+    double t1,t2,t3,t4,a1,a2,x1,x2,z;
 
-#define VRANLC(n,x_seed,a,y) \
-{ \
-    int i; \
-    double loc_x,loc_t1,loc_t2,loc_t3,loc_t4; \
-    double loc_a1,loc_a2,loc_x1,loc_x2,loc_z; \
- \
-    loc_t1 = r23 * (a); \
-    loc_a1 = (int)loc_t1; \
-    loc_a2 = (a) - t23 * loc_a1; \
-    loc_x = (x_seed); \
- \
-    for (i = 1; i <= (n); i++) { \
-        loc_t1 = r23 * loc_x; \
-        loc_x1 = (int)loc_t1; \
-        loc_x2 = loc_x - t23 * loc_x1; \
-        loc_t1 = loc_a1 * loc_x2 + loc_a2 * loc_x1; \
-        loc_t2 = (int)(r23 * loc_t1); \
-        loc_z = loc_t1 - t23 * loc_t2; \
-        loc_t3 = t23 * loc_z + loc_a2 * loc_x2; \
-        loc_t4 = (int)(r46 * loc_t3); \
-        loc_x = loc_t3 - t46 * loc_t4; \
-        y[i-1] = r46 * loc_x; \
-    } \
-    (x_seed) = loc_x; \
+    t1 = r23 * a;
+    a1 = (int)t1;
+    a2 = a - t23 * a1;
+
+    t1 = r23 * (*x);
+    x1 = (int)t1;
+    x2 = (*x) - t23 * x1;
+    t1 = a1 * x2 + a2 * x1;
+    t2 = (int)(r23 * t1);
+    z = t1 - t23 * t2;
+    t3 = t23 * z + a2 * x2;
+    t4 = (int)(r46 * t3);
+    (*x) = t3 - t46 * t4;
+
+    return (r46 * (*x));
 }
 
 /*--------------------------------------------------------------------
@@ -121,8 +97,11 @@ int main(int argc, char **argv) {
 
     double Mops, t1, t2, t3, t4, x1, x2, sx, sy, tm, an, tt, gc;
     double dum[3] = { 1.0, 1.0, 1.0 };
+    const int TRANSFER_X = 1;
     int np, nn, ierr, node, no_nodes, i, l, k, nit, ierrcode,
     no_large_nodes, np_add, k_offset, j;
+    double loc_x,loc_t1,loc_t2,loc_t3,loc_t4;
+    double loc_a1,loc_a2,loc_x1,loc_x2,loc_z;
     boolean verified;
     char size[13+1];	/* character*13 */
 
@@ -156,6 +135,9 @@ c   the x-array to reduce the effects of paging on the timings.
 c   Also, call all mathematical functions that are used. Make
 c   sure these initializations cannot be eliminated as dead code.
 */
+#pragma acc data create(qq[0:NN][0:NQ],x[0:2*NK],xx[0:NN][0:2*NK]) \
+    copyout(q[0:NQ])
+{
     vranlc(0, &(dum[0]), dum[1], &(dum[2]));
     dum[0] = randlc(&(dum[1]), dum[2]);
     for (i = 0; i < 2*NK; i++) x[i] = -1.0e99;
@@ -167,13 +149,14 @@ c   sure these initializations cannot be eliminated as dead code.
     timer_start(1);
 
     vranlc(0, &t1, A, x);
+    #pragma acc update device(x[0:2*NK])
 
 /*   Compute AN = A ^ (2 * NK) (mod 2^46). */
 
     t1 = A;
 
     for ( i = 1; i <= MK+1; i++) {
-	t2 = randlc(&t1, t1);
+      t2 = randlc(&t1, t1);
     }
 
     an = t1;
@@ -181,42 +164,32 @@ c   sure these initializations cannot be eliminated as dead code.
     gc = 0.0;
     sx = 0.0;
     sy = 0.0;
-
-#pragma acc data create(q,partial_sx,partial_sy)
-{
-
-    #pragma acc kernels present(q)
-    for ( i = 0; i <= NQ - 1; i++) {
-	q[i] = 0.0;
+    
+    #pragma acc parallel loop
+    for (k = 0; k < np; k++) {
+      /* Initialize private q (qq) */
+      #pragma acc loop
+      for (i = 0; i < NQ; i++)
+          qq[k][i] = 0.0;
+      /* Initialize private x (xx)  */
+      #pragma acc loop
+      for (i = 0; i < 2*NK; i++)
+         xx[k][i] = x[i];
     }
-
+      
+/*
+c   Each instance of this loop may be performed independently. We compute
+c   the k offsets separately to take into account the fact that some nodes
+c   have more numbers to generate than others
+*/
     k_offset = -1;
 
-    #pragma acc kernels present(partial_sx,partial_sy)
-    for (nn = 0; nn < NN; nn++) {
-        partial_sx[nn] = 0.0;
-        partial_sy[nn] = 0.0;
-    }
+    double t1, t2, t3, t4, x1, x2;
+    int kk, i, ik, l;
+    double psx, psy;
 
-/*      For each thread on GPU.           */
-
-    #pragma acc parallel loop present(q,partial_sx,partial_sy) \
-        reduction(+:sx,sy,gc)
-    for (nn = 0; nn < NN; nn++) {
-        double t1, t2, t3, t4, x1, x2;
-        double xx[2*NK], qq[NQ];
-        int kk, i, ik, l;
-
-        #pragma acc loop
-        for (i = 0; i < NQ; i++) qq[i] = 0.0;
-
-        #pragma acc loop
-        for (i = 0; i < 2*NK; i++) xx[i] = -1.0e99;
-
-/*      Distributed to threads.            */
-
-        #pragma acc loop seq
-        for (k = 1; k <= np; k+=nn) {
+    #pragma acc parallel loop reduction(+:sx,sy)
+    for (k = 1; k <= np; k++) {
       kk = k_offset + k;
       t1 = S;
       t2 = an;
@@ -226,43 +199,72 @@ c   sure these initializations cannot be eliminated as dead code.
       #pragma acc loop seq
       for (i = 1; i <= 100; i++) {
           ik = kk / 2;
-          if (2 * ik != kk) RANDLC(t3, t1, t2)
+          if (2 * ik != kk) t3 = RANDLC(&t1, t2);
           if (ik == 0) break;
-          RANDLC(t3, t2, t2)
+          t3 = RANDLC(&t2, t2);
           kk = ik;
       }
 
 /*      Compute uniform pseudorandom numbers. */
 
-      VRANLC(2*NK, t1, A, xx)
+      loc_t1 = r23 * A;
+      loc_a1 = (int)loc_t1;
+      loc_a2 = A - t23 * loc_a1;
+      loc_x = t1;
+
+      #pragma acc loop seq
+      for (i = 1; i <= 2*NK; i++) {
+          loc_t1 = r23 * loc_x;
+          loc_x1 = (int)loc_t1;
+          loc_x2 = loc_x - t23 * loc_x1;
+          loc_t1 = loc_a1 * loc_x2 + loc_a2 * loc_x1;
+          loc_t2 = (int)(r23 * loc_t1);
+          loc_z = loc_t1 - t23 * loc_t2;
+          loc_t3 = t23 * loc_z + loc_a2 * loc_x2;
+          loc_t4 = (int)(r46 * loc_t3);
+          loc_x = loc_t3 - t46 * loc_t4;
+          xx[k-1][i-1] = r46 * loc_x;
+      }
+      t1 = loc_x;
 
 /*
 c       Compute Gaussian deviates by acceptance-rejection method and 
 c       tally counts in concentric square annuli.  This loop is not 
 c       vectorizable.
 */
+ 
+      psx = psy = 0.0;
 
-      #pragma acc loop seq
+      #pragma acc loop reduction(+:psx,psy)
       for ( i = 0; i < NK; i++) {
-          x1 = 2.0 * xx[2*i] - 1.0;
-          x2 = 2.0 * xx[2*i+1] - 1.0;
+          x1 = 2.0 * xx[k-1][2*i] - 1.0;
+          x2 = 2.0 * xx[k-1][2*i+1] - 1.0;
           t1 = pow2(x1) + pow2(x2);
           if (t1 <= 1.0) {
             t2 = sqrt(-2.0 * log(t1) / t1);
             t3 = (x1 * t2);             /* Xi */
             t4 = (x2 * t2);             /* Yi */
             l = max(fabs(t3), fabs(t4));
-            qq[l] += 1.0;                      /* counts */
-            partial_sx[nn] = partial_sx[nn] + t3;  /* sum of Xi */
-            partial_sy[nn] = partial_sy[nn] + t4;               /* sum of Yi */
+            qq[k-1][l] += 1.0;                      /* counts */
+            psx = psx + t3;  /* sum of Xi */
+            psy = psy + t4;               /* sum of Yi */
           }
       }
 
-        }
-
-      for ( i = 0; i < NQ; i++) gc += qq[i];
-      sx += partial_sx[nn];
-      sy += partial_sy[nn];
+      sx += psx;
+      sy += psy;
+      
+    }
+    
+/*      Reduce private qq to q          */
+    #pragma acc parallel loop reduction(+:gc)
+    for ( i = 0; i < NQ; i++ ) {
+      double sumq = 0.0;
+      #pragma acc loop reduction(+:sumq)
+      for (k = 0; k < np; k++)
+          sumq = sumq + qq[k][i];
+      q[i] = sumq;
+      gc += sumq;
     }
 
 } /* end acc data */
