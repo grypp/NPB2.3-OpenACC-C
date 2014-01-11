@@ -1,3 +1,12 @@
+/*************************************************************************
+ *                                                                       *
+ *  	     		   NAS PARALLEL BENCHMARKS 2.3        		 		 *
+ *                                                                       *
+ *                   OmpSs OMP4 Accelerator Version                      *
+ *                                                                       *
+ *                              IS                                       *
+ *                                                                       *
+ *************************************************************************
 /*--------------------------------------------------------------------
   
   NAS Parallel Benchmarks 2.3 OpenACC C versions - IS
@@ -24,6 +33,7 @@
 
   OpenMP C version: S. Satoh
   OpenACC C version: P. Makpaisit
+  OmpSs-OMP4 C version: Guray Ozen
   
 --------------------------------------------------------------------*/
 
@@ -120,7 +130,7 @@ int      passed_verification;
 /* These are the three main arrays. */
 /* See SIZE_OF_BUFFERS def above    */
 /************************************/
-INT_TYPE key_array[SIZE_OF_BUFFERS],    
+int key_array[SIZE_OF_BUFFERS],
          key_buff1[SIZE_OF_BUFFERS],    
          key_buff2[SIZE_OF_BUFFERS],
          partial_verify_vals[TEST_ARRAY_SIZE];
@@ -163,6 +173,10 @@ INT_TYPE test_index_array[TEST_ARRAY_SIZE],
 /* function prototypes */
 /***********************/
 double	randlc( double *X, double *A );
+void    timer_clear( int n );
+void    timer_start( int n );
+void    timer_stop( int n );
+double  timer_read( int n );
 
 void full_verify( void );
 
@@ -328,6 +342,8 @@ void full_verify()
            
 
 }
+    int nk=NUM_KEYS;
+    int mk=MAX_KEY;
 
 
 
@@ -335,35 +351,36 @@ void full_verify()
 /*****************************************************************/
 /*************             R  A  N  K             ****************/
 /*****************************************************************/
-
-void rank( int iteration )
-{
-
-    INT_TYPE    i, k;
-
-    INT_TYPE    shift = MAX_KEY_LOG_2 - NUM_BUCKETS_LOG_2;
-    INT_TYPE    key;
-    INT_TYPE    min_key_val, max_key_val;
-
-    key_array[iteration] = iteration;
-    key_array[iteration+MAX_ITERATIONS] = MAX_KEY - iteration;
-
-
-/*  Determine where the partial verify test keys are, load into  */
-/*  top of array bucket_size                                     */
-    for( i=0; i<TEST_ARRAY_SIZE; i++ )
-        partial_verify_vals[i] = key_array[test_index_array[i]];
-
-    #pragma acc update device(key_array)
+void accel(){
+    int i;
+#if defined(_ACC)
+    #pragma acc update device(key_array[0:nk])
 
 /*  Copy key array to key_buff2 */
-    #pragma acc parallel loop present(key_array,key_buff2)
-    for( i=0; i<NUM_KEYS; i++)
+    #pragma acc parallel loop present(key_array[0:nk],key_buff2[0:nk])
+#elif defined(_OMP4)
+	#pragma omp target device(acc) copy_deps
+	#pragma omp task in(key_array[0:nk],nk) out(key_buff2[0:nk])
+	#pragma omp teams
+	#pragma omp distribute parallel for
+#elif defined(_OPENACC)
+	#pragma acc parallel loop pcopyout(key_buff2[0:nk]) pcopyin(key_array[0:nk])
+#endif
+    for( i=0; i<nk; i++)
         key_buff2[i] = key_array[i];
 
 /*  Clear the work array */
-    #pragma acc parallel loop present(key_buff1)
-    for( i=0; i<MAX_KEY; i++ )
+#if defined(_ACC)
+    #pragma acc parallel loop present(key_buff1[0:mk])
+#elif defined(_OMP4)
+	#pragma omp target device(acc) copy_deps
+	#pragma omp task in(mk) out(key_buff1[0:mk])
+	#pragma omp teams
+	#pragma omp distribute parallel for
+#elif defined(_OPENACC)
+	#pragma acc parallel loop pcopyout(key_buff1[0:nk])
+#endif
+    for( i=0; i<mk; i++ )
         key_buff1[i] = 0;
 
 
@@ -374,28 +391,81 @@ void rank( int iteration )
     own indexes to determine how many of each there are: their
     individual population                                       */
 #if 0 /* To parallelize this loop OpenACC must support atomic operation */
-    #pragma acc parallel loop present(key_buff1,key_buff2)
+    #pragma acc parallel loop present(key_buff1[0:mk],key_buff2[0:nk])
     for( i=0; i<NUM_KEYS; i++ )
         #pragma acc atomic
         key_buff1[key_buff2[i]]++;  /* Now they have individual key   */
                                     /* population                     */
 
     #pragma acc update host(key_buff1,key_buff2)
-#else
-    #pragma acc update host(key_buff1,key_buff2)
+#endif
+
+#if defined(_ACC)
+#pragma acc update host(key_buff1[0:mk],key_buff2[0:nk])
 
     for( i=0; i<NUM_KEYS; i++ )
         key_buff1[key_buff2[i]]++;  /* Now they have individual key   */
                                     /* population                     */
+#elif GPU
+	#pragma omp target device(acc) copy_deps
+	#pragma omp task in(nk,key_buff2[0:nk]) out(key_buff1[0:mk])
+	#pragma omp teams
+	#pragma omp distribute parallel for
+    for( i=0; i<nk; i++ )
+		#pragma omp atomic
+        key_buff1[key_buff2[i]]++;  /* Now they have individual key   */
+#elif defined(_OMP4)				/* population                     */
+	#pragma omp target device(smp)
+	#pragma omp task in(nk,key_buff2[0:nk]) out(key_buff1[0:mk])
+    for( i=0; i<nk; i++ )
+        key_buff1[key_buff2[i]]++;  /* Now they have individual key   */
+
+#else
+    for( i=0; i<nk; i++ )
+		key_buff1[key_buff2[i]]++;  /* Now they have individual key   */
 #endif
+
 
 /*  To obtain ranks of each key, successively add the individual key
     population, not forgetting to add m, the total of lesser keys,
     to the first key population                                          */
+#if defined(_OMP4)
+    #pragma omp target device(smp)
+    #pragma omp task inout(key_buff1[0:mk])
+#endif
+    for( i=0; i<MAX_KEY-1; i++ )
+        key_buff1[i+1] += key_buff1[i];
 
-    for( i=0; i<MAX_KEY-1; i++ )   
-        key_buff1[i+1] += key_buff1[i];  
+}
+void rank( int iteration )
+{
+int mk=MAX_KEY;
+    int    i, k;
 
+    int    shift = MAX_KEY_LOG_2 - NUM_BUCKETS_LOG_2;
+    int    key;
+    int    min_key_val, max_key_val;
+
+#if defined(_OMP4)
+	#pragma omp taskwait on(key_array[0:mk])
+#endif
+
+    key_array[iteration] = iteration;
+    key_array[iteration+MAX_ITERATIONS] = MAX_KEY - iteration;
+
+
+/*  Determine where the partial verify test keys are, load into  */
+/*  top of array bucket_size                                     */
+    for( i=0; i<TEST_ARRAY_SIZE; i++ )
+        partial_verify_vals[i] = key_array[test_index_array[i]];
+
+
+
+	accel();
+
+#if defined(_OMP4)
+	#pragma omp taskwait on(key_buff1[0:nk])
+#endif
     
 /* This is the partial verify test section */
 /* Observe that test_rank_array vals are   */
@@ -586,20 +656,21 @@ int main( int argc, char **argv )
         
 
 /*  Printout initial NPB info */
-    printf( "\n\n NAS Parallel Benchmarks 2.3 OpenACC C version"
+    printf( "\n\n NAS Parallel Benchmarks 2.3 OmpSs+OpenMP Accelerator C version"
 	    " - IS Benchmark\n\n" );
     printf( " Size:  %d  (class %c)\n", TOTAL_KEYS, CLASS );
     printf( " Iterations:   %d\n", MAX_ITERATIONS );
 
-/*  Initialize timer  */             
+/*  Initialize timer  */
     timer_clear( 0 );
 
 /*  Generate random number sequence and subsequent keys on all procs */
     create_seq( 314159265.00,                    /* Random number gen seed */
                 1220703125.00 );                 /* Random number gen mult */
-
-#pragma acc data create(key_buff1, key_buff2, key_array) copyout(key_buff2)
+#if defined(_ACC)
+#pragma acc data create(key_buff1,  key_array) copyout(key_buff2)
 {
+#endif
 /*  Do one interation for free (i.e., untimed) to guarantee initialization of
     all data and code pages and respective tables */
     rank( 1 );
@@ -613,15 +684,20 @@ int main( int argc, char **argv )
     timer_start( 0 );
 
 
-/*  This is the main iteration */    
+/*  This is the main iteration */
     for( iteration=1; iteration<=MAX_ITERATIONS; iteration++ )
     {
         if( CLASS != 'S' ) printf( "        %d\n", iteration );
-	
+
         rank( iteration );
     }
+#if defined(_ACC)
 } /* end pragma acc data */
-
+#endif
+#if defined(_OMP4)
+    int nk=NUM_KEYS;
+	#pragma omp taskwait on(key_buff2[0:nk])
+#endif
 /*  End of timing, obtain maximum time of all processors */
     timer_stop( 0 );
     timecounter = timer_read( 0 );
@@ -656,6 +732,25 @@ int main( int argc, char **argv )
                      CFLAGS,
                      CLINKFLAGS,
 		     "randlc");
+
+
+/*  Print additional timers  */
+
+       double t_total, t_percent;
+
+       t_total = timer_read( 3 );
+       printf("\nAdditional timers -\n");
+       printf(" Total execution: %8.3f\n", t_total);
+       if (t_total == 0.0) t_total = 1.0;
+       timecounter = timer_read(1);
+       t_percent = timecounter/t_total * 100.;
+       printf(" Initialization : %8.3f (%5.2f%%)\n", timecounter, t_percent);
+       timecounter = timer_read(0);
+       t_percent = timecounter/t_total * 100.;
+       printf(" Benchmarking   : %8.3f (%5.2f%%)\n", timecounter, t_percent);
+       timecounter = timer_read(2);
+       t_percent = timecounter/t_total * 100.;
+       printf(" Sorting        : %8.3f (%5.2f%%)\n", timecounter, t_percent);
 
 
     return 0;

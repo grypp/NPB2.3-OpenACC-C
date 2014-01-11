@@ -1,3 +1,12 @@
+/*************************************************************************
+ *                                                                       *
+ *  	     		   NAS PARALLEL BENCHMARKS 2.3        		 		 *
+ *                                                                       *
+ *                   OmpSs OMP4 Accelerator Version                      *
+ *                                                                       *
+ *                              IS                                       *
+ *                                                                       *
+ *************************************************************************
 /*--------------------------------------------------------------------
   
   NAS Parallel Benchmarks 2.3 OpenACC C versions - CG
@@ -23,6 +32,7 @@
 
   OpenMP C version: S. Satoh
   OpenACC C version: P. Makpaisit
+  OmpSs-OMP4 C version: Guray Ozen
   
 --------------------------------------------------------------------*/
 
@@ -132,7 +142,7 @@ int main(int argc, char **argv) {
 	class = 'U';
     }
 
-    printf("\n\n NAS Parallel Benchmarks 2.3 OpenACC C version"
+    printf( "\n\n NAS Parallel Benchmarks 2.3 OmpSs+OpenMP Accelerator C version"
 	   " - CG Benchmark\n");
     printf(" Size: %10d\n", NA);
     printf(" Iterations: %5d\n", NITER);

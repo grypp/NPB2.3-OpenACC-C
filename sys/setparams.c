@@ -45,7 +45,7 @@
  * won't accidentally change it. 
  */
 
-#define VERSION "2.3"
+#define VERSION "3.3.1"
 
 /* controls verbose output from setparams */
 /* #define VERBOSE */
@@ -67,7 +67,9 @@ void write_mg_info(FILE *fp, char class);
 void write_cg_info(FILE *fp, char class);
 void write_ft_info(FILE *fp, char class);
 void write_ep_info(FILE *fp, char class);
+void write_dc_info(FILE *fp, char class);
 void write_is_info(FILE *fp, char class);
+void write_ua_info(FILE *fp, char class);
 void write_compiler_info(int type, FILE *fp);
 void write_convertdouble_info(int type, FILE *fp);
 void check_line(char *line, char *label, char *val);
@@ -76,10 +78,11 @@ void put_string(FILE *fp, char *name, char *val);
 void put_def_string(FILE *fp, char *name, char *val);
 void put_def_variable(FILE *fp, char *name, char *val);
 int ilog2(int i);
+double power(double base, int i);
 
-enum benchmark_types {SP, BT, LU, MG, FT, IS, EP, CG};
+enum benchmark_types {SP, BT, LU, MG, FT, IS, EP, CG, UA, DC};
 
-main(int argc, char *argv[])
+int main(int argc, char *argv[])
 {
   int type;
   char class, class_old;
@@ -136,7 +139,7 @@ main(int argc, char *argv[])
 #endif
   }
 
-  exit(0);
+  return 0;
 }
 
 
@@ -157,6 +160,8 @@ void get_info(char *argv[], int *typep, char *classp)
   else if (!strcmp(argv[1], "is") || !strcmp(argv[1], "IS")) *typep = IS;
   else if (!strcmp(argv[1], "ep") || !strcmp(argv[1], "EP")) *typep = EP;
   else if (!strcmp(argv[1], "cg") || !strcmp(argv[1], "CG")) *typep = CG;
+  else if (!strcmp(argv[1], "ua") || !strcmp(argv[1], "UA")) *typep = UA;
+  else if (!strcmp(argv[1], "dc") || !strcmp(argv[1], "DC")) *typep = DC;
   else {
     printf("setparams: Error: unknown benchmark type %s\n", argv[1]);
     exit(1);
@@ -169,17 +174,26 @@ void get_info(char *argv[], int *typep, char *classp)
 
 void check_info(int type, char class) 
 {
-  int tmplog; 
 
   /* check class */
   if (class != 'S' && 
+      class != 'W' && 
       class != 'A' && 
       class != 'B' && 
-      class != 'R' && 
-      class != 'W' && 
-      class != 'C') {
+      class != 'C' && 
+      class != 'D' && 
+      class != 'E') {
     printf("setparams: Unknown benchmark class %c\n", class); 
-    printf("setparams: Allowed classes are \"S\", \"A\", \"B\" and \"C\"\n");
+    printf("setparams: Allowed classes are \"S\", \"W\", and \"A\" through \"E\"\n");
+    exit(1);
+  }
+
+  if (class == 'E' && (type == IS || type == UA || type == DC)) {
+    printf("setparams: Benchmark class %c not defined for IS, UA, or DC\n", class);
+    exit(1);
+  }
+  if ((class == 'C' || class == 'D') && type == DC) {
+    printf("setparams: Benchmark class %c not defined for DC\n", class);
     exit(1);
   }
 
@@ -196,8 +210,7 @@ void check_info(int type, char class)
 
 void read_info(int type, char *classp)
 {
-  int nread, gotem = 0;
-  char line[200];
+  int nread;
   FILE *fp;
   fp = fopen(FILENAME, "r");
   if (fp == NULL) {
@@ -217,6 +230,7 @@ void read_info(int type, char *classp)
       case LU:
       case EP:
       case CG:
+      case UA:
           nread = fscanf(fp, DESC_LINE, classp);
           if (nread != 1) {
             printf("setparams: Error parsing config file %s. Ignoring previous settings\n", FILENAME);
@@ -224,6 +238,7 @@ void read_info(int type, char *classp)
           }
           break;
       case IS:
+      case DC:
           nread = fscanf(fp, DEF_CLASS_LINE, classp);
           if (nread != 1) {
             printf("setparams: Error parsing config file %s. Ignoring previous settings\n", FILENAME);
@@ -236,8 +251,6 @@ void read_info(int type, char *classp)
         exit(1);
   }
 
- normal_return:
-  *classp = *classp;
   fclose(fp);
 
 
@@ -261,7 +274,7 @@ void write_info(int type, char class)
   FILE *fp;
   fp = fopen(FILENAME, "w");
   if (fp == NULL) {
-    printf("setparams: Can't open file %d for writing\n", FILENAME);
+    printf("setparams: Can't open file %s for writing\n", FILENAME);
     exit(1);
   }
 
@@ -273,16 +286,16 @@ void write_info(int type, char class)
       case LU:
       case EP:
       case CG:
+      case UA:
           /* Write out the header */
           fprintf(fp, DESC_LINE, class);
           /* Print out a warning so bozos don't mess with the file */
           fprintf(fp, "\
 /*\n\
-c  This file is generated automatically by the setparams utility.\n\
-c  It sets the number of processors and the class of the NPB\n\
-c  in this directory. Do not modify it by hand.\n\
+   This file is generated automatically by the setparams utility.\n\
+   It sets the number of processors and the class of the NPB\n\
+   in this directory. Do not modify it by hand.   \n\
 */\n");
-
           break;
       case IS:
           fprintf(fp, DEF_CLASS_LINE, class);
@@ -291,6 +304,17 @@ c  in this directory. Do not modify it by hand.\n\
    This file is generated automatically by the setparams utility.\n\
    It sets the number of processors and the class of the NPB\n\
    in this directory. Do not modify it by hand.   */\n\
+   \n");
+          break;
+      case DC:
+          fprintf(fp, DEF_CLASS_LINE, class);
+          fprintf(fp, "\
+/*\n\
+   This file is generated automatically by the setparams utility.\n\
+   It sets the number of processors and the class of the NPB\n\
+   in this directory. Do not modify it by hand.\n\
+   This file provided for backward compatibility.\n\
+   It is not used in DC benchmark.   */\n\
    \n");
           break;
       default:
@@ -306,6 +330,9 @@ c  in this directory. Do not modify it by hand.\n\
     break;	      
   case BT:	      
     write_bt_info(fp, class);
+    break;	      
+  case DC:	      
+    write_dc_info(fp, class);
     break;	      
   case LU:	      
     write_lu_info(fp, class);
@@ -324,6 +351,9 @@ c  in this directory. Do not modify it by hand.\n\
     break;	      
   case CG:	      
     write_cg_info(fp, class);
+    break;
+  case UA:	      
+    write_ua_info(fp, class);
     break;
   default:
     printf("setparams: (Internal error): Unknown benchmark type %d\n", type);
@@ -349,13 +379,15 @@ void write_sp_info(FILE *fp, char class)
   else if (class == 'A') { problem_size = 64;  dt = "0.0015";  niter = 400; }
   else if (class == 'B') { problem_size = 102; dt = "0.001";   niter = 400; }
   else if (class == 'C') { problem_size = 162; dt = "0.00067"; niter = 400; }
+  else if (class == 'D') { problem_size = 408; dt = "0.00030"; niter = 500; }
+  else if (class == 'E') { problem_size = 1020; dt = "0.0001"; niter = 500; }
   else {
     printf("setparams: Internal error: invalid class %c\n", class);
     exit(1);
   }
-  fprintf(fp, "#define\tPROBLEM_SIZE\t%d\n", problem_size);
-  fprintf(fp, "#define\tNITER_DEFAULT\t%d\n", niter);
-  fprintf(fp, "#define\tDT_DEFAULT\t%s\n", dt);
+  fprintf(fp, "#define PROBLEM_SIZE   %d\n", problem_size);
+  fprintf(fp, "#define NITER_DEFAULT  %d\n", niter);
+  fprintf(fp, "#define DT_DEFAULT     %s\n", dt);
 }
   
 /* 
@@ -371,25 +403,44 @@ void write_bt_info(FILE *fp, char class)
   else if (class == 'A') { problem_size = 64;  dt = "0.0008";  niter = 200; }
   else if (class == 'B') { problem_size = 102; dt = "0.0003";  niter = 200; }
   else if (class == 'C') { problem_size = 162; dt = "0.0001";  niter = 200; }
+  else if (class == 'D') { problem_size = 408; dt = "0.00002";  niter = 250; }
+  else if (class == 'E') { problem_size = 1020; dt = "0.4e-5";    niter = 250; }
   else {
     printf("setparams: Internal error: invalid class %c\n", class);
     exit(1);
   }
-  fprintf(fp, "#define\tPROBLEM_SIZE\t%d\n", problem_size);
-  fprintf(fp, "#define\tNITER_DEFAULT\t%d\n", niter);
-  fprintf(fp, "#define\tDT_DEFAULT\t%s\n", dt);
+  fprintf(fp, "#define PROBLEM_SIZE   %d\n", problem_size);
+  fprintf(fp, "#define NITER_DEFAULT  %d\n", niter);
+  fprintf(fp, "#define DT_DEFAULT     %s\n", dt);
 }
   
+/* 
+ * write_dc_info(): Write DC specific info to config file
+ */
 
+
+void write_dc_info(FILE *fp, char class) 
+{
+  long int input_tuples, attrnum;
+  if      (class == 'S') { input_tuples = 1000;     attrnum = 5; }
+  else if (class == 'W') { input_tuples = 100000;   attrnum = 10; }
+  else if (class == 'A') { input_tuples = 1000000;  attrnum = 15; }
+  else if (class == 'B') { input_tuples = 10000000; attrnum = 20; }
+  else {
+    printf("setparams: Internal error: invalid class %c\n", class);
+    exit(1);
+  }
+  fprintf(fp, "long long int input_tuples=%ld, attrnum=%ld;\n",
+              input_tuples, attrnum);
+}
 
 /* 
- * write_lu_info(): Write SP specific info to config file
+ * write_lu_info(): Write LU specific info to config file
  */
 
 void write_lu_info(FILE *fp, char class) 
 {
   int isiz1, isiz2, itmax, inorm, problem_size;
-  int xdiv, ydiv; /* number of cells in x and y direction */
   char *dt_default;
 
   if      (class == 'S') { problem_size = 12;  dt_default = "0.5"; itmax = 50; }
@@ -397,6 +448,8 @@ void write_lu_info(FILE *fp, char class)
   else if (class == 'A') { problem_size = 64;  dt_default = "2.0"; itmax = 250; }
   else if (class == 'B') { problem_size = 102; dt_default = "2.0"; itmax = 250; }
   else if (class == 'C') { problem_size = 162; dt_default = "2.0"; itmax = 250; }
+  else if (class == 'D') { problem_size = 408; dt_default = "1.0"; itmax = 300; }
+  else if (class == 'E') { problem_size = 1020; dt_default = "0.5"; itmax = 300; }
   else {
     printf("setparams: Internal error: invalid class %c\n", class);
     exit(1);
@@ -405,16 +458,17 @@ void write_lu_info(FILE *fp, char class)
   isiz1 = problem_size;
   isiz2 = problem_size;
   
-  fprintf(fp, "\n/* full problem size */\n");
-  fprintf(fp, "#define\tISIZ1\t%d\n", problem_size);
-  fprintf(fp, "#define\tISIZ2\t%d\n", problem_size);
-  fprintf(fp, "#define\tISIZ3\t%d\n", problem_size);
-  
-  fprintf(fp, "/* number of iterations and how often to print the norm */\n");
-  fprintf(fp, "#define\tITMAX_DEFAULT\t%d\n", itmax);
-  fprintf(fp, "#define\tINORM_DEFAULT\t%d\n", inorm);
 
-  fprintf(fp, "#define\tDT_DEFAULT\t%s\n", dt_default);
+  fprintf(fp, "\n/* full problem size */\n");
+  fprintf(fp, "#define ISIZ1  %d\n", isiz1);
+  fprintf(fp, "#define ISIZ2  %d\n", isiz2);
+  fprintf(fp, "#define ISIZ3  %d\n", problem_size);
+
+  fprintf(fp, "\n/* number of iterations and how often to print the norm */\n");
+  fprintf(fp, "#define ITMAX_DEFAULT  %d\n", itmax);
+  fprintf(fp, "#define INORM_DEFAULT  %d\n", inorm);
+
+  fprintf(fp, "#define DT_DEFAULT     %s\n", dt_default);
 }
 
 /* 
@@ -426,10 +480,13 @@ void write_mg_info(FILE *fp, char class)
   int problem_size, nit, log2_size, lt_default, lm;
   int ndim1, ndim2, ndim3;
   if      (class == 'S') { problem_size = 32; nit = 4; }
-  else if (class == 'W') { problem_size = 64; nit = 40; }
+/*  else if (class == 'W') { problem_size = 64; nit = 40; }*/
+  else if (class == 'W') { problem_size = 128; nit = 4; }
   else if (class == 'A') { problem_size = 256; nit = 4; }
   else if (class == 'B') { problem_size = 256; nit = 20; }
   else if (class == 'C') { problem_size = 512; nit = 20; }
+  else if (class == 'D') { problem_size = 1024; nit = 50; }
+  else if (class == 'E') { problem_size = 2048; nit = 50; }
   else {
     printf("setparams: Internal error: invalid class type %c\n", class);
     exit(1);
@@ -443,16 +500,17 @@ void write_mg_info(FILE *fp, char class)
   ndim3 = log2_size;
   ndim2 = log2_size;
 
-  fprintf(fp, "#define\tNX_DEFAULT\t%d\n", problem_size);
-  fprintf(fp, "#define\tNY_DEFAULT\t%d\n", problem_size);
-  fprintf(fp, "#define\tNZ_DEFAULT\t%d\n", problem_size);
-  fprintf(fp, "#define\tNIT_DEFAULT\t%d\n", nit);
-  fprintf(fp, "#define\tLM\t%d\n", lm);
-  fprintf(fp, "#define\tLT_DEFAULT\t%d\n", lt_default);
-  fprintf(fp, "#define\tDEBUG_DEFAULT\t%d\n", 0);
-  fprintf(fp, "#define\tNDIM1\t%d\n", ndim1);
-  fprintf(fp, "#define\tNDIM2\t%d\n", ndim2);
-  fprintf(fp, "#define\tNDIM3\t%d\n", ndim3);
+  fprintf(fp, "#define NX_DEFAULT     %d\n", problem_size);
+  fprintf(fp, "#define NY_DEFAULT     %d\n", problem_size);
+  fprintf(fp, "#define NZ_DEFAULT     %d\n", problem_size);
+  fprintf(fp, "#define NIT_DEFAULT    %d\n", nit);
+  fprintf(fp, "#define LM             %d\n", lm);
+  fprintf(fp, "#define LT_DEFAULT     %d\n", lt_default);
+  fprintf(fp, "#define DEBUG_DEFAULT  %d\n", 0);
+  fprintf(fp, "#define NDIM1          %d\n", ndim1);
+  fprintf(fp, "#define NDIM2          %d\n", ndim2);
+  fprintf(fp, "#define NDIM3          %d\n", ndim3);
+  fprintf(fp, "#define ONE            %d\n", 1);
 }
 
 
@@ -462,12 +520,12 @@ void write_mg_info(FILE *fp, char class)
 
 void write_is_info(FILE *fp, char class) 
 {
-  int m1, m2, m3 ;
   if( class != 'S' &&
       class != 'W' &&
       class != 'A' &&
       class != 'B' &&
-      class != 'C')
+      class != 'C' &&
+      class != 'D')
   {
     printf("setparams: Internal error: invalid class type %c\n", class);
     exit(1);
@@ -487,7 +545,9 @@ void write_cg_info(FILE *fp, char class)
        *shiftW="12.0",
        *shiftA="20.0",
        *shiftB="60.0",
-       *shiftC="110.0";
+       *shiftC="110.0",
+       *shiftD="500.0",
+       *shiftE="1.5e3";
 
 
   if( class == 'S' )
@@ -500,18 +560,59 @@ void write_cg_info(FILE *fp, char class)
   { na=75000; nonzer=13; niter=75; shift=shiftB; }
   else if( class == 'C' )
   { na=150000; nonzer=15; niter=75; shift=shiftC; }
+  else if( class == 'D' )
+  { na=1500000; nonzer=21; niter=100; shift=shiftD; }
+  else if( class == 'E' )
+  { na=9000000; nonzer=26; niter=100; shift=shiftE; }
   else
   {
     printf("setparams: Internal error: invalid class type %c\n", class);
     exit(1);
   }
-  fprintf( fp, "#define\tNA\t%d\n", na);
-  fprintf( fp, "#define\tNONZER\t%d\n", nonzer);
-  fprintf( fp, "#define\tNITER\t%d\n", niter);
-  fprintf( fp, "#define\tSHIFT\t%s\n", shift);
-  fprintf( fp, "#define\tRCOND\t%s\n", rcond);
+  fprintf( fp, "#define NA      %d\n", na );
+  fprintf( fp, "#define NONZER  %d\n", nonzer );
+  fprintf( fp, "#define NITER   %d\n", niter );
+  fprintf( fp, "#define SHIFT   %s\n", shift );
+  fprintf( fp, "#define RCOND   %s\n", rcond );
 }
 
+/* 
+ * write_ua_info(): Write UA specific info to config file
+ */
+
+void write_ua_info(FILE *fp, char class) 
+{
+  int lelt, lmor,refine_max, niter, nmxh, fre;
+  char *alpha;
+
+  fre = 5;
+  if( class == 'S' )
+  { lelt=250;lmor=11600;       refine_max=4;  niter=50;  nmxh=10; alpha="0.040e0"; }
+  else if( class == 'W' )
+  { lelt=700;lmor=26700;       refine_max=5;  niter=100; nmxh=10; alpha="0.060e0"; }
+  else if( class == 'A' )
+  { lelt=2400;lmor=92700;      refine_max=6;  niter=200; nmxh=10; alpha="0.076e0"; }
+  else if( class == 'B' )
+  { lelt=8800;  lmor=334600;   refine_max=7;  niter=200; nmxh=10; alpha="0.076e0"; }
+  else if( class == 'C' )
+  { lelt=33500; lmor=1262100;  refine_max=8;  niter=200; nmxh=10; alpha="0.067e0"; }
+  else if( class == 'D' )
+  { lelt=515000;lmor=19500000; refine_max=10; niter=250; nmxh=10; alpha="0.046e0"; }
+  else
+  {
+    printf("setparams: Internal error: invalid class type %c\n", class);
+    exit(1);
+  }
+
+  fprintf( fp, "#define LELT           %d\n\n", lelt );
+  fprintf( fp, "#define LMOR           %d\n\n", lmor );
+  fprintf( fp, "#define REFINE_MAX     %d\n\n", refine_max );
+  fprintf( fp, "#define FRE_DEFAULT    %d\n\n", fre );
+  fprintf( fp, "#define NITER_DEFAULT  %d\n\n", niter );
+  fprintf( fp, "#define NMXH_DEFAULT   %d\n\n", nmxh );
+  fprintf( fp, "#define CLASS_DEFAULT  \'%c\'\n\n", class );
+  fprintf( fp, "#define ALPHA_DEFAULT  %s\n\n", alpha );
+}
 
 /* 
  * write_ft_info(): Write FT specific info to config file
@@ -523,12 +624,14 @@ void write_ft_info(FILE *fp, char class)
    * is to specify log of number of grid points in each
    * direction m1, m2, m3. nt is the number of iterations
    */
-  int nx, ny, nz, maxdim, niter, np_min;
+  int nx, ny, nz, maxdim, niter;
   if      (class == 'S') { nx = 64; ny = 64; nz = 64; niter = 6;}
   else if (class == 'W') { nx = 128; ny = 128; nz = 32; niter = 6;}
   else if (class == 'A') { nx = 256; ny = 256; nz = 128; niter = 6;}
   else if (class == 'B') { nx = 512; ny = 256; nz = 256; niter =20;}
   else if (class == 'C') { nx = 512; ny = 512; nz = 512; niter =20;}
+  else if (class == 'D') { nx = 2048; ny = 1024; nz = 1024; niter =25;}
+  else if (class == 'E') { nx = 4096; ny = 2048; nz = 2048; niter =25;}
   else {
     printf("setparams: Internal error: invalid class type %c\n", class);
     exit(1);
@@ -536,12 +639,16 @@ void write_ft_info(FILE *fp, char class)
   maxdim = nx;
   if (ny > maxdim) maxdim = ny;
   if (nz > maxdim) maxdim = nz;
-  fprintf(fp, "#define\tNX\t%d\n", nx);
-  fprintf(fp, "#define\tNY\t%d\n", ny);
-  fprintf(fp, "#define\tNZ\t%d\n", nz);
-  fprintf(fp, "#define\tMAXDIM\t%d\n", maxdim);
-  fprintf(fp, "#define\tNITER_DEFAULT\t%d\n", niter);
-  fprintf(fp, "#define\tNTOTAL\t%d\n", nx*ny*nz);
+
+  fprintf(fp, "#define NX             %d\n", nx);
+  fprintf(fp, "#define NY             %d\n", ny);
+  fprintf(fp, "#define NZ             %d\n", nz);
+  fprintf(fp, "#define MAXDIM         %d\n", maxdim);
+  fprintf(fp, "#define NITER_DEFAULT  %d\n", niter);
+  fprintf(fp, "#define NXP            %d\n", nx+1);
+  fprintf(fp, "#define NYP            %d\n", ny);
+  fprintf(fp, "#define NTOTAL         %llu\n", (unsigned long long)nx*ny*nz);
+  fprintf(fp, "#define NTOTALP        %llu\n", (unsigned long long)(nx+1)*ny*nz);
 }
 
 /*
@@ -560,13 +667,15 @@ void write_ep_info(FILE *fp, char class)
   else if (class == 'A') { m = 28; }
   else if (class == 'B') { m = 30; }
   else if (class == 'C') { m = 32; }
+  else if (class == 'D') { m = 36; }
+  else if (class == 'E') { m = 40; }
   else {
     printf("setparams: Internal error: invalid class type %c\n", class);
     exit(1);
   }
 
-  fprintf(fp, "#define\tCLASS\t \'%c\'\n", class);
-  fprintf(fp, "#define\tM\t%d\n", m);
+  fprintf(fp, "#define CLASS  \'%c\'\n", class);
+  fprintf(fp, "#define M      %d\n", m);
 }
 
 
@@ -587,9 +696,9 @@ void write_ep_info(FILE *fp, char class)
 #include <stdio.h>
 #define DEFFILE "../config/make.def"
 #define DEFAULT_MESSAGE "(none)"
+FILE *deffile;
 void write_compiler_info(int type, FILE *fp)
 {
-  FILE *deffile;
   char line[LL];
   char f77[LL], flink[LL], f_lib[LL], f_inc[LL], fflags[LL], flinkflags[LL];
   char compiletime[LL], randfile[LL];
@@ -601,7 +710,7 @@ void write_compiler_info(int type, FILE *fp)
   if (deffile == NULL) {
     printf("\n\
 setparams: File %s doesn't exist. To build the NAS benchmarks\n\
-           you need to create is according to the instructions\n\
+           you need to create it according to the instructions\n\
            in the README in the main directory and comments in \n\
            the file config/make.def.template\n", DEFFILE);
     exit(1);
@@ -652,6 +761,7 @@ setparams: File %s doesn't exist. To build the NAS benchmarks\n\
       case LU:
       case EP:
       case CG:
+      case UA:
           put_def_string(fp, "COMPILETIME", compiletime);
           put_def_string(fp, "NPBVERSION", VERSION);
           put_def_string(fp, "CS1", cc);
@@ -663,6 +773,7 @@ setparams: File %s doesn't exist. To build the NAS benchmarks\n\
 	  put_def_string(fp, "CS7", randfile);
           break;
       case IS:
+      case DC:
           put_def_string(fp, "COMPILETIME", compiletime);
           put_def_string(fp, "NPBVERSION", VERSION);
           put_def_string(fp, "CC", cc);
@@ -683,6 +794,7 @@ setparams: File %s doesn't exist. To build the NAS benchmarks\n\
 void check_line(char *line, char *label, char *val)
 {
   char *original_line;
+  int n;
   original_line = line;
   /* compare beginning of line and label */
   while (*label != '\0' && *line == *label) {
@@ -703,8 +815,22 @@ void check_line(char *line, char *label, char *val)
   /* finally we've come to the value */
   strcpy(val, line);
   /* chop off the newline at the end */
-  val[strlen(val)-1] = '\0';
-  if (val[strlen(val) - 1] == '\\') {
+  n = strlen(val)-1;
+  if (n >= 0 && val[n] == '\n')
+    val[n--] = '\0';
+  if (n >= 0 && val[n] == '\r')
+    val[n--] = '\0';
+  /* treat continuation */
+  while (val[n] == '\\' && fgets(original_line, LL, deffile)) {
+     line = original_line;
+     while (isspace(*line)) line++;
+     if (isspace(*original_line)) val[n++] = ' ';
+     while (*line && *line != '\n' && *line != '\r' && n < LL-1)
+       val[n++] = *line++;
+     val[n] = '\0';
+     n--;
+  }
+/*  if (val[n] == '\\') {
     printf("\n\
 setparams: Error in file make.def. Because of the way in which\n\
            command line arguments are incorporated into the\n\
@@ -715,7 +841,7 @@ setparams: Error in file make.def. Because of the way in which\n\
            lines. The offending line is\n\
   %s\n", original_line);
     exit(1);
-  }
+  } */
 }
 
 int check_include_line(char *line, char *filename)
@@ -755,15 +881,33 @@ void put_string(FILE *fp, char *name, char *val)
     val[MAXL-3] = '.';
     len = MAXL;
   }
-  fprintf(fp, "%scharacter*%d %s\n", FINDENT, len, name);
+  fprintf(fp, "%scharacter %s*%d\n", FINDENT, name, len);
   fprintf(fp, "%sparameter (%s=\'%s\')\n", FINDENT, name, val);
 }
 
-/* NOTE: is the ... stuff necessary in C? */
-void put_def_string(FILE *fp, char *name, char *val)
+/* need to escape quote (") in val */
+int fix_string_quote(char *val, char *newval, int maxl)
 {
   int len;
+  int i, j;
   len = strlen(val);
+  i = j = 0;
+  while (i < len && j < maxl) {
+    if (val[i] == '"')
+      newval[j++] = '\\';
+    if (j < maxl)
+      newval[j++] = val[i++];
+  }
+  newval[j] = '\0';
+  return j;
+}
+
+/* NOTE: is the ... stuff necessary in C? */
+void put_def_string(FILE *fp, char *name, char *val0)
+{
+  int len;
+  char val[MAXL+3];
+  len = fix_string_quote(val0, val, MAXL+2);
   if (len > MAXL) {
     val[MAXL] = '\0';
     val[MAXL-1] = '.';
@@ -831,14 +975,39 @@ int ilog2(int i)
   int exp2 = 1;
   if (i <= 0) return(-1);
 
-  for (log2 = 0; log2 < 20; log2++) {
+  for (log2 = 0; log2 < 30; log2++) {
     if (exp2 == i) return(log2);
+    if (exp2 > i) break;
     exp2 *= 2;
   }
   return(-1);
 }
 
 
+
+/* Power function. We could use pow from the math library, but then
+ * we would have to insist on always linking with the math library, just
+ * for this function. Since we only need pow with integer exponents,
+ * we'll code it ourselves here.
+ */
+
+double power(double base, int i)
+{
+  double x;
+
+  if (i==0) return (1.0);
+  else if (i<0) {
+    base = 1.0/base;
+    i = -i;
+  }
+  x = 1.0;
+  while (i>0) {
+    x *=base;
+    i--;
+  }
+  return (x);
+}
+    
 
 void write_convertdouble_info(int type, FILE *fp)
 {
@@ -850,10 +1019,11 @@ void write_convertdouble_info(int type, FILE *fp)
   case MG:
   case EP:
   case CG:
+  case UA:
 #ifdef CONVERTDOUBLE
-    fprintf(fp, "#define\tCONVERTDOUBLE\tTRUE\n");
+    fprintf(fp, "\n#define CONVERTDOUBLE  true\n");
 #else
-    fprintf(fp, "#define\tCONVERTDOUBLE\tFALSE\n");
+    fprintf(fp, "\n#define CONVERTDOUBLE  false\n");
 #endif
     break;
   }
