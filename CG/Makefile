@@ -13,7 +13,7 @@ ${PROGRAM}: config ${OBJS}
 	${CLINK} ${CLINKFLAGS} -o ${PROGRAM} ${OBJS} ${C_LIB}
 
 cg.o:		cg.c  npbparams.h
-	${CCOMPILE} cg.c
+	${CCOMPILE} -I../common cg.c
 
 clean:
 	- rm -f *.o *~ 

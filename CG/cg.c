@@ -1,12 +1,3 @@
-/*************************************************************************
- *                                                                       *
- *  	     		   NAS PARALLEL BENCHMARKS 2.3        		 		 *
- *                                                                       *
- *                   OmpSs OMP4 Accelerator Version                      *
- *                                                                       *
- *                              IS                                       *
- *                                                                       *
- *************************************************************************
 /*--------------------------------------------------------------------
   
   NAS Parallel Benchmarks 2.3 OpenACC C versions - CG
@@ -32,7 +23,6 @@
 
   OpenMP C version: S. Satoh
   OpenACC C version: P. Makpaisit
-  OmpSs-OMP4 C version: Guray Ozen
   
 --------------------------------------------------------------------*/
 
@@ -48,7 +38,7 @@ c  architecture.  If reporting timing results, any of these three may
 c  be used without penalty.
 c---------------------------------------------------------------------
 */
-
+#include "omp.h"
 #include "npb-C.h"
 #include "npbparams.h"
 
@@ -103,10 +93,15 @@ static void sprnvc(int n, int nz, double v[], int iv[], int nzloc[],
 static int icnvrt(double x, int ipwr2);
 static void vecset(int n, double v[], int iv[], int *nzv, int i, double val);
 
+void    timer_clear( int n );
+void    timer_start( int n );
+void    timer_stop( int n );
+double  timer_read( int n );
 /*--------------------------------------------------------------------
       program cg
 --------------------------------------------------------------------*/
-
+int na=NA;
+int nz=NZ;
 int main(int argc, char **argv) {
     int	i, j, k, it;
     double zeta;
@@ -117,7 +112,7 @@ int main(int argc, char **argv) {
     char class;
     boolean verified;
     double zeta_verify_value, epsilon;
-
+double ss;
     firstrow = 1;
     lastrow  = NA;
     firstcol = 1;
@@ -142,7 +137,7 @@ int main(int argc, char **argv) {
 	class = 'U';
     }
 
-    printf( "\n\n NAS Parallel Benchmarks 2.3 OmpSs+OpenMP Accelerator C version"
+    printf("\n\n NAS Parallel Benchmarks 2.3 OpenACC C version"
 	   " - CG Benchmark\n");
     printf(" Size: %10d\n", NA);
     printf(" Iterations: %5d\n", NITER);
@@ -181,6 +176,10 @@ c        Shift the col index vals from actual (firstcol --> lastcol )
 c        to local, i.e., (1 --> lastcol-firstcol+1)
 c---------------------------------------------------------------------*/
 	#pragma acc parallel loop
+	#pragma omp target device(acc) copy_in(lastrow,firstrow,firstcol) copy_deps
+	#pragma omp task in(rowstr[0:na+1+1]) inout(colidx[0:nz+1])
+	#pragma omp teams
+	#pragma omp distribute parallel for
     for (j = 1; j <= lastrow - firstrow + 1; j++) {
 	#pragma acc loop
 	for (k = rowstr[j]; k < rowstr[j+1]; k++) {
@@ -192,12 +191,16 @@ c---------------------------------------------------------------------*/
 c  set starting vector to (1, 1, .... 1)
 c-------------------------------------------------------------------*/
     #pragma acc parallel loop
+
+	#pragma omp target device(acc) copy_in(na) copy_deps
+	#pragma omp task inout(x[0:na+2+1])
+	#pragma omp teams
+	#pragma omp distribute parallel for
     for (i = 1; i <= NA+1; i++) {
 	x[i] = 1.0;
     }
 
     zeta  = 0.0;
-
 /*-------------------------------------------------------------------
 c---->
 c  Do one iteration untimed to init all code and data page tables
@@ -222,18 +225,26 @@ c-------------------------------------------------------------------*/
 	norm_temp12 = 0.0;
 
 	#pragma acc parallel loop reduction(+:norm_temp11,norm_temp12)
+	#pragma omp target device(smp) copy_in(lastcol,firstcol) copy_deps
+	#pragma omp task in(z[0:na+2+1],x[0:na+2+1]) inout(norm_temp11,norm_temp12)
 	for (j = 1; j <= lastcol-firstcol+1; j++) {
             double zj = z[j];
             norm_temp11 = norm_temp11 + x[j]*zj;
             norm_temp12 = norm_temp12 + zj*zj;
 	}
 
+	#pragma omp target device(smp) copy_deps
+	#pragma omp task inout(norm_temp12)
 	norm_temp12 = 1.0 / sqrt( norm_temp12 );
 
 /*--------------------------------------------------------------------
 c  Normalize z to obtain x
 c-------------------------------------------------------------------*/
     #pragma acc parallel loop
+	#pragma omp target device(acc) copy_in(lastcol,firstcol) copy_deps
+	#pragma omp task out(x[0:na+2+1]) in(z[0:na+2+1],norm_temp12)
+	#pragma omp teams
+	#pragma omp distribute parallel for
 	for (j = 1; j <= lastcol-firstcol+1; j++) {
             x[j] = norm_temp12*z[j];
 	}
@@ -244,7 +255,11 @@ c-------------------------------------------------------------------*/
 c  set starting vector to (1, 1, .... 1)
 c-------------------------------------------------------------------*/
     #pragma acc parallel loop
-    for (i = 1; i <= NA+1; i++) {
+	#pragma omp target device(acc) copy_in(na) copy_deps
+	#pragma omp task out(x[0:na+2+1])
+	#pragma omp teams
+	#pragma omp distribute parallel for
+    for (i = 1; i <= na+1; i++) {
          x[i] = 1.0;
     }
 
@@ -253,7 +268,7 @@ c-------------------------------------------------------------------*/
 
     timer_clear( 1 );
     timer_start( 1 );
-
+ss=omp_get_wtime();
 /*--------------------------------------------------------------------
 c---->
 c  Main Iteration for inverse power method
@@ -274,18 +289,27 @@ c  Also, find norm of z
 c  So, first: (z.z)
 c-------------------------------------------------------------------*/
 	
+	#pragma omp target device(smp) norm_temp12
+	#pragma omp task out(norm_temp11,norm_temp12)
+	{
 	norm_temp11 = 0.0;
 	norm_temp12 = 0.0;
-
+	}
     #pragma acc parallel loop reduction(+:norm_temp11,norm_temp12)
+	#pragma omp target device(smp) copy_in(lastcol,firstcol) copy_deps
+	#pragma omp task in(z[0:na+2+1],x[0:na+2+1]) inout(norm_temp11,norm_temp12)
 	for (j = 1; j <= lastcol-firstcol+1; j++) {
             double zj = z[j];
             norm_temp11 = norm_temp11 + x[j]*zj;
             norm_temp12 = norm_temp12 + zj*zj;
 	}
 
+
+	#pragma omp target device(smp) copy_deps
+	#pragma omp task inout(norm_temp12)
 	norm_temp12 = 1.0 / sqrt( norm_temp12 );
 
+	#pragma omp taskwait on(norm_temp11)
 	zeta = SHIFT + 1.0 / norm_temp11;
 
 	if( it == 1 ) {
@@ -296,12 +320,23 @@ c-------------------------------------------------------------------*/
 /*--------------------------------------------------------------------
 c  Normalize z to obtain x
 c-------------------------------------------------------------------*/
-    #pragma acc parallel loop
+
+	#pragma acc parallel loop
+/*
+	#pragma omp target device(acc) copy_in(lastcol,firstcol) copy_deps
+	#pragma omp task out(x[0:na+2+1]) in(z[0:na+2+1],norm_temp12)
+	#pragma omp teams
+	#pragma omp distribute parallel for
+*/
+	#pragma omp target device(smp) copy_in(lastcol,firstcol) copy_deps
+	#pragma omp task out(x[0:na+2+1]) in(z[0:na+2+1],norm_temp12)
 	for (j = 1; j <= lastcol-firstcol+1; j++) {
             x[j] = norm_temp12*z[j];
 	}
+	//XXX it should not be necessary!!!!
+#pragma omp taskwait
     } /* end of main iter inv pow meth */
-
+#pragma omp taskwait
     timer_stop( 1 );
 
 } /* end acc data */
@@ -311,7 +346,7 @@ c  End of timed section
 c-------------------------------------------------------------------*/
 
     t = timer_read( 1 );
-
+    double tend=omp_get_wtime()-ss;
     printf(" Benchmark completed\n");
 
     epsilon = 1.0e-10;
@@ -340,7 +375,7 @@ c-------------------------------------------------------------------*/
     } else {
 	mflops = 0.0;
     }
-
+    printf( " Time in seconds at OMP=             %12.2f\n", tend );
     c_print_results("CG", class, NA, 0, 0, NITER, t,
 		    mflops, "          floating point", 
 		    verified, NPBVERSION, COMPILETIME,
@@ -380,12 +415,17 @@ c---------------------------------------------------------------------*/
 c  Initialize the CG algorithm:
 c-------------------------------------------------------------------*/
     #pragma acc parallel loop async(INIT_KERNEL)
+
+    #pragma omp target device(acc) copy_in(naa) copy_deps
+	#pragma omp task in(x[0:na+2+1]) out( z[0:na+2+1], p[0:na+2+1], q[0:na+2+1], r[0:na+2+1], w[0:na+2+1] )
+	#pragma omp teams
+	#pragma omp distribute parallel for
     for (j = 1; j <= naa+1; j++) {
-      double xj = x[j];
+      //double xj = x[j];
       q[j] = 0.0;
       z[j] = 0.0;
-      r[j] = xj;
-      p[j] = xj;
+      r[j] = x[j];
+      p[j] = x[j];
       w[j] = 0.0;
     }
 
@@ -394,24 +434,34 @@ c  rho = r.r
 c  Now, obtain the norm of r: First, sum squares of r elements locally...
 c-------------------------------------------------------------------*/
     #pragma acc parallel loop reduction(+:rho)
+#if _RED
+	#pragma omp target device(acc) copy_in(lastcol,firstcol) copy_deps
+	#pragma omp task in(x[0:na+2+1]) inout(rho)
+	#pragma omp teams num_teams(1) thread_limit(128)
+	#pragma omp distribute parallel for reduction(+:rho)
+#else
+	#pragma omp target device(smp) copy_in(lastcol,firstcol) copy_deps
+	#pragma omp task in(x[0:na+2+1]) inout(rho)
+#endif
     for (j = 1; j <= lastcol-firstcol+1; j++) {
       double xj = x[j];
       rho = rho + xj*xj;
     }
-    
-	#pragma acc wait(INIT_KERNEL)
 
+	#pragma acc wait(INIT_KERNEL)
+	#pragma omp taskwait on(rho)
 /*--------------------------------------------------------------------
 c---->
 c  The conj grad iteration loop
 c---->
 c-------------------------------------------------------------------*/
+
     for (cgit = 1; cgit <= cgitmax; cgit++) {
       rho0 = rho;
       d = 0.0;
       rho = 0.0;
 	  sum = 0.0;
-      
+
 /*--------------------------------------------------------------------
 c  q = A.p
 c  The partition submatrix-vector multiply: use workspace w
@@ -427,16 +477,28 @@ C        on the Cray t3d - overall speed of code is 1.5 times faster.
 
 /* rolled version */ 
     #pragma acc parallel loop present(a[0:NZ+1],p[0:NA+2+1],colidx[0:NZ+1])
+#if BUGGY
+	#pragma omp target device(acc) copy_in(lastrow,firstrow) copy_deps
+	#pragma omp task in(a[0:nz+1],p[0:na+2+1],colidx[0:nz+1]) out(q[0:na+2+1], w[0:na+2+1]) inout(sum)
+	#pragma omp teams num_teams(1) thread_limit(128)
+	#pragma omp distribute
+#endif
+
+	#pragma omp target device(smp) copy_in(lastrow,firstrow) copy_deps
+	#pragma omp task in(a[0:nz+1],p[0:na+2+1],colidx[0:nz+1],rowstr[0:na+1+1]) out(q[0:na+2+1], w[0:na+2+1],sum)
 	for (j = 1; j <= lastrow-firstrow+1; j++) {
 		sum = 0.0;
 		#pragma acc loop reduction(+:sum)
+#if BUGGY
+		#pragma omp parallel for reduction(+:sum)
+#endif
 		for (k = rowstr[j]; k < rowstr[j+1]; k++) {
-		sum = sum + a[k]*p[colidx[k]];
+			sum = sum + a[k]*p[colidx[k]];
 		}
 		w[j] = sum;
 		q[j] = sum;
 	}
-	
+
 /* unrolled-by-two version
         for (j = 1; j <= lastrow-firstrow+1; j++) {
 	    int iresidue;
@@ -482,6 +544,11 @@ C        on the Cray t3d - overall speed of code is 1.5 times faster.
 c  Clear w for reuse...
 c-------------------------------------------------------------------*/
     #pragma acc parallel loop async(RESET_W_KERNEL)
+
+	#pragma omp target device(acc) copy_in(lastcol,firstcol) copy_deps
+	#pragma omp task out(w[0:na+2+1])
+	#pragma omp teams
+	#pragma omp distribute parallel for
 	for (j = 1; j <= lastcol-firstcol+1; j++) {
             w[j] = 0.0;
 	}
@@ -490,10 +557,19 @@ c-------------------------------------------------------------------*/
 c  Obtain p.q
 c-------------------------------------------------------------------*/
 	#pragma acc parallel loop reduction(+:d)
+#if _RED
+	#pragma omp target device(acc) copy_in(lastcol,firstcol) copy_deps
+	#pragma omp task in(p[0:na+2+1],q[0:na+2+1]) inout(d)
+	#pragma omp teams num_teams(1) thread_limit(128)
+	#pragma omp distribute parallel for reduction(+:d)
+#else
+	#pragma omp target device(smp) copy_in(lastcol,firstcol) copy_deps
+	#pragma omp task in(p[0:na+2+1],q[0:na+2+1]) inout(d)
+#endif
 	for (j = 1; j <= lastcol-firstcol+1; j++) {
             d = d + p[j]*q[j];
 	}
-	
+	#pragma omp taskwait on(d)
 	#pragma acc wait(RESET_W_KERNEL)
 
 /*--------------------------------------------------------------------
@@ -513,22 +589,37 @@ c  rho = r.r
 c  Now, obtain the norm of r: First, sum squares of r elements locally...
 c---------------------------------------------------------------------*/
 	#pragma acc parallel loop reduction(+:rho)
+#if _RED
+	#pragma omp target device(acc) copy_in(lastcol,firstcol) copy_deps
+	#pragma omp task inout(rho,z[0:na+2+1]) in(p[0:na+2+1],q[0:na+2+1]) out(r[0:na+2+1],alpha)
+	#pragma omp teams num_teams(1) thread_limit(128)
+	#pragma omp distribute parallel for reduction(+:rho)
+#else
+	#pragma omp target device(smp) copy_in(lastcol,firstcol) copy_deps
+	#pragma omp task inout(z[0:na+2+1],r[0:na+2+1]) in(p[0:na+2+1],q[0:na+2+1],alpha,rho)
+#endif
 	for (j = 1; j <= lastcol-firstcol+1; j++) {
-            double new_rj = r[j] - alpha*q[j];
-            z[j] = z[j] + alpha*p[j];
-            r[j] = new_rj;
-			rho = rho + new_rj*new_rj;
+		double new_rj = r[j] - alpha*q[j];
+		z[j] = z[j] + alpha*p[j];
+		r[j] = new_rj;
+		rho = rho + new_rj*new_rj;
 	}
-            
-/*--------------------------------------------------------------------
+
+
+/*-----------------------------------f---------------------------------
 c  Obtain beta:
 c-------------------------------------------------------------------*/
+	#pragma omp taskwait on(rho)
 	beta = rho / rho0;
 
 /*--------------------------------------------------------------------
 c  p = r + beta*p
 c-------------------------------------------------------------------*/
     #pragma acc parallel loop
+	#pragma omp target device(acc) copy_in(lastcol,firstcol) copy_deps
+	#pragma omp task inout(p[0:na+2+1]) in(beta,r[0:na+2+1])
+	#pragma omp teams
+	#pragma omp distribute parallel for
 	for (j = 1; j <= lastcol-firstcol+1; j++) {
             p[j] = r[j] + beta*p[j];
 	}
@@ -542,6 +633,8 @@ c---------------------------------------------------------------------*/
     sum = 0.0;
 
     #pragma acc parallel loop
+	#pragma omp target device(smp) copy_in(lastrow,firstrow) copy_deps
+	#pragma omp task in(a[0:nz+1],z[0:na+2+1],rowstr[0:na+1+1],colidx[0:nz+1]) out(q[0:na+2+1], w[0:na+2+1]) inout(d)
     for (j = 1; j <= lastrow-firstrow+1; j++) {
 	d = 0.0;
 	#pragma acc loop reduction(+:d)
@@ -556,11 +649,21 @@ c---------------------------------------------------------------------*/
 c  At this point, r contains A.z
 c-------------------------------------------------------------------*/
     #pragma acc parallel loop reduction(+:sum)
+#if _RED
+	#pragma omp target device(acc) copy_in(lastcol,firstcol) copy_deps
+	#pragma omp task inout(rho,z[0:na+2+1]) in(p[0:na+2+1],q[0:na+2+1]) out(r[0:na+2+1],alpha)
+	#pragma omp teams num_teams(1) thread_limit(128)
+	#pragma omp distribute parallel for reduction(+:rho)
+#else
+	#pragma omp target device(smp) copy_in(lastcol,firstcol) copy_deps
+	#pragma omp task in(x[0:na+2+1],r[0:na+2+1]) inout(sum)
+#endif
     for (j = 1; j <= lastcol-firstcol+1; j++) {
 	d = x[j] - r[j];
 	sum = sum + d*d;
     }
 
+    #pragma omp taskwait on(sum)
     (*rnorm) = sqrt(sum);
 }
 
