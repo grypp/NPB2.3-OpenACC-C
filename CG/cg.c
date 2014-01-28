@@ -143,8 +143,8 @@ double ss;
   class = 'U';
     }
 
-    printf("\n\n NAS Parallel Benchmarks 2.3 OpenACC C version"
-     " - CG Benchmark\n");
+    printf("\n\n NAS Parallel Benchmarks 2.3 OmpSs OpenMP 4.0 Accelerator version"
+         " - CG Benchmark\n");
     printf(" Size: %10d\n", NA);
     printf(" Iterations: %5d\n", NITER);
 
