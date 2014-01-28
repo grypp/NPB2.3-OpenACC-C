@@ -2,16 +2,16 @@
  *                                                                       *
  *  	     		   NAS PARALLEL BENCHMARKS 2.3        		 		 *
  *                                                                       *
- *                   OmpSs OMP4 Accelerator Version                      *
+ *                   OmpSs OpenMP 4.0 Accelerator Version                *
  *                                                                       *
- *                              IS                                       *
+ *                              CG                                       *
  *                                                                       *
  *************************************************************************
 /*--------------------------------------------------------------------
   
-  NAS Parallel Benchmarks 2.3 OpenACC C versions - IS
+  NAS Parallel Benchmarks 2.3 OmpSs OpenMP 4.0 and OpenACC C versions - IS
 
-  This benchmark is an OpenACC C version of the NPB IS code.
+  This benchmark is an OmpSs OpenMP 4.0 Accelerator and OpenACC C version of the NPB IS code.
   
   The OpenACC C versions are derived from the serial C versions in
   "NPB 3.3-serial" and OpenMP C versions in "NPB 2.3-omp" 
