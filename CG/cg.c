@@ -1,8 +1,8 @@
 /*************************************************************************
  *                                                                       *
- *  	     		   NAS PARALLEL BENCHMARKS 2.3        		 		 *
+ *             		  NAS PARALLEL BENCHMARKS 2.3          		         *
  *                                                                       *
- *                   OmpSs OpenMP 4.0 Accelerator Version                *
+ *                   OmpSs OMP4 Accelerator Version                      *
  *                                                                       *
  *                              CG                                       *
  *                                                                       *
@@ -144,7 +144,7 @@ double ss;
     }
 
     printf("\n\n NAS Parallel Benchmarks 2.3 OmpSs OpenMP 4.0 Accelerator version"
-         " - CG Benchmark\n");
+     " - CG Benchmark\n");
     printf(" Size: %10d\n", NA);
     printf(" Iterations: %5d\n", NITER);
 
@@ -193,7 +193,7 @@ c-------------------------------------------------------------------*/
 
   #pragma omp target device(acc) copy_in(na) copy_deps
   #pragma omp task inout(x[0:na+2+1])
-  #pragma omp teams
+  #pragma omp teams thread_limit(8)
   #pragma omp distribute parallel for
     for (i = 1; i <= NA+1; i++) {
   x[i] = 1.0;
@@ -226,7 +226,7 @@ c-------------------------------------------------------------------*/
 
   #pragma omp target device(acc) copy_in(lastcol,firstcol) copy_deps
   #pragma omp task in(z[0:na+2+1],x[0:na+2+1]) inout(norm_temp11)
-  #pragma omp teams num_teams(1)
+  #pragma omp teams thread_limit(128) num_teams(1)
   #pragma omp distribute parallel for reduction(+:norm_temp11)
   for (j = 1; j <= lastcol-firstcol+1; j++) {
             double zj;
@@ -236,7 +236,7 @@ c-------------------------------------------------------------------*/
 
   #pragma omp target device(acc) copy_in(lastcol,firstcol) copy_deps
   #pragma omp task in(z[0:na+2+1]) inout(norm_temp12)
-  #pragma omp teams num_teams(1)
+  #pragma omp teams thread_limit(128) num_teams(1)
   #pragma omp distribute parallel for reduction(+:norm_temp12)
   for (j = 1; j <= lastcol-firstcol+1; j++) {
             double zj;
@@ -254,7 +254,7 @@ c-------------------------------------------------------------------*/
 
   #pragma omp target device(acc) copy_in(lastcol,firstcol) copy_deps
   #pragma omp task out(x[0:na+2+1]) in(z[0:na+2+1],norm_temp12)
-  #pragma omp teams
+  #pragma omp teams thread_limit(8)
   #pragma omp distribute parallel for
   for (j = 1; j <= lastcol-firstcol+1; j++) {
             x[j] = norm_temp12*z[j];
@@ -268,7 +268,7 @@ c-------------------------------------------------------------------*/
 
   #pragma omp target device(acc) copy_in(na) copy_deps
   #pragma omp task out(x[0:na+2+1])
-  #pragma omp teams
+  #pragma omp teams thread_limit(8)
   #pragma omp distribute parallel for
     for (i = 1; i <= na+1; i++) {
          x[i] = 1.0;
@@ -309,7 +309,7 @@ c-------------------------------------------------------------------*/
 
   #pragma omp target device(acc) copy_in(lastcol,firstcol) copy_deps
   #pragma omp task in(z[0:na+2+1],x[0:na+2+1]) inout(norm_temp11)
-  #pragma omp teams num_teams(1)
+  #pragma omp teams thread_limit(128) num_teams(1)
   #pragma omp distribute parallel for reduction(+:norm_temp11)
   for (j = 1; j <= lastcol-firstcol+1; j++) {
             double zj;
@@ -319,7 +319,7 @@ c-------------------------------------------------------------------*/
 
   #pragma omp target device(acc) copy_in(lastcol,firstcol) copy_deps
   #pragma omp task in(z[0:na+2+1]) inout(norm_temp12)
-  #pragma omp teams num_teams(1)
+  #pragma omp teams thread_limit(128) num_teams(1)
   #pragma omp distribute parallel for reduction(+:norm_temp12)
   for (j = 1; j <= lastcol-firstcol+1; j++) {
             double zj;
@@ -346,13 +346,13 @@ c-------------------------------------------------------------------*/
 
   #pragma omp target device(acc) copy_in(lastcol,firstcol) copy_deps
   #pragma omp task out(x[0:na+2+1]) in(z[0:na+2+1],norm_temp12)
-  #pragma omp teams
+  #pragma omp teams thread_limit(8)
   #pragma omp distribute parallel for
   for (j = 1; j <= lastcol-firstcol+1; j++) {
             x[j] = norm_temp12*z[j];
   }
 } /* end of main iter inv pow meth */
-#pragma omp taskwait
+
     timer_stop( 1 );
 
 /*--------------------------------------------------------------------
@@ -429,9 +429,9 @@ c---------------------------------------------------------------------*/
 c  Initialize the CG algorithm:
 c-------------------------------------------------------------------*/
     #pragma omp target device(acc) copy_in(naa) copy_deps
-  #pragma omp task in(x[0:na+2+1]) out( z[0:na+2+1], p[0:na+2+1], q[0:na+2+1], r[0:na+2+1], w[0:na+2+1] )
-  #pragma omp teams
-  #pragma omp distribute parallel for
+    #pragma omp task in(x[0:na+2+1]) out( z[0:na+2+1], p[0:na+2+1], q[0:na+2+1], r[0:na+2+1], w[0:na+2+1] )
+    #pragma omp teams thread_limit(8)
+    #pragma omp distribute parallel for
     for (j = 1; j <= naa+1; j++) {
       //double xj = x[j];
       q[j] = 0.0;
@@ -448,7 +448,7 @@ c-------------------------------------------------------------------*/
 
   #pragma omp target device(acc) copy_in(lastcol,firstcol) copy_deps
   #pragma omp task in(x[0:na+2+1]) inout(rho)
-  #pragma omp teams num_teams(1) thread_limit(128)
+  #pragma omp teams thread_limit(128) num_teams(1)
   #pragma omp distribute parallel for reduction(+:rho)
     for (j = 1; j <= lastcol-firstcol+1; j++) {
       double xj;
@@ -550,7 +550,7 @@ c-------------------------------------------------------------------*/
 
   #pragma omp target device(acc) copy_in(lastcol,firstcol) copy_deps
   #pragma omp task out(w[0:na+2+1])
-  #pragma omp teams
+  #pragma omp teams thread_limit(8)
   #pragma omp distribute parallel for
   for (j = 1; j <= lastcol-firstcol+1; j++) {
             w[j] = 0.0;
@@ -617,7 +617,7 @@ c-------------------------------------------------------------------*/
 
   #pragma omp target device(acc) copy_in(lastcol,firstcol) copy_deps
   #pragma omp task inout(p[0:na+2+1]) in(beta,r[0:na+2+1])
-  #pragma omp teams
+  #pragma omp teams thread_limit(8)
   #pragma omp distribute parallel for
   for (j = 1; j <= lastcol-firstcol+1; j++) {
             p[j] = r[j] + beta*p[j];
@@ -635,7 +635,7 @@ c---------------------------------------------------------------------*/
 
   #pragma omp target device(acc) copy_in(lastrow,firstrow) copy_deps
   #pragma omp task in(a[0:nz+1],z[0:na+2+1],rowstr[0:na+1+1],colidx[0:nz+1],d) out(r[0:na+2+1], w[0:na+2+1])
-  #pragma omp teams
+  #pragma omp teams num_teams(32) thread_limit(128)
   #pragma omp distribute private(d)
     for (j = 1; j <= lastrow-firstrow+1; j++) {
   d = 0.0;
@@ -653,7 +653,7 @@ c-------------------------------------------------------------------*/
 
   #pragma omp target device(acc) copy_in(lastcol,firstcol) copy_deps
   #pragma omp task in(x[0:na+2+1],r[0:na+2+1],d) inout(sum)
-  #pragma omp teams num_teams(1) thread_limit(128)
+  #pragma omp teams num_teams(1) thread_limit(32)
   #pragma omp distribute parallel for reduction(+:sum)
     for (j = 1; j <= lastcol-firstcol+1; j++) {
     d = x[j] - r[j];
