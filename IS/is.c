@@ -40,7 +40,8 @@
 #include "npbparams.h"
 #include <stdlib.h>
 #include <stdio.h>
-
+#define _OMP4
+#define _ATOMIC
 /******************/
 /* default values */
 /******************/
@@ -406,17 +407,21 @@ void accel(){
     for( i=0; i<NUM_KEYS; i++ )
         key_buff1[key_buff2[i]]++;  /* Now they have individual key   */
                                     /* population                     */
-#elif GPU
+#elif defined(_ATOMIC)
 	#pragma omp target device(acc) copy_deps
-	#pragma omp task in(nk,key_buff2[0:nk]) out(key_buff1[0:mk])
-	#pragma omp teams
+	#pragma omp task in(nk,key_buff2[0:nk]) inout(key_buff1[0:mk])
+	#pragma omp teams num_teams(16) num_threads(32)
 	#pragma omp distribute parallel for
     for( i=0; i<nk; i++ )
-		#pragma omp atomic
-        key_buff1[key_buff2[i]]++;  /* Now they have individual key   */
+    {
+		int *add;
+        add = &key_buff1[key_buff2[i]];
+        #pragma omp atomic
+          add++;  /* Now they have individual key   */
+    }
 #elif defined(_OMP4)				/* population                     */
 	#pragma omp target device(smp)
-	#pragma omp task in(nk,key_buff2[0:nk]) out(key_buff1[0:mk])
+	#pragma omp task in(nk,key_buff2[0:nk]) inout(key_buff1[0:mk])
     for( i=0; i<nk; i++ )
         key_buff1[key_buff2[i]]++;  /* Now they have individual key   */
 
