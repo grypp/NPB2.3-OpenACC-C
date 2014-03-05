@@ -1,8 +1,8 @@
 /*************************************************************************
  *                                                                       *
- *  	     		   NAS PARALLEL BENCHMARKS 2.3        		 		 *
+ *  	     		   NAS PARALLEL BENCHMARKS 2.3        		 		             *
  *                                                                       *
- *                   OmpSs OpenMP 4.0 Accelerator Version                *
+ *            OmpSs OpenMP 4.0 Accelerator Version                       *
  *                                                                       *
  *                              CG                                       *
  *                                                                       *
@@ -41,7 +41,7 @@
 #include <stdlib.h>
 #include <stdio.h>
 #define _OMP4
-#define _ATOMIC
+//#define _ATOMIC
 /******************/
 /* default values */
 /******************/

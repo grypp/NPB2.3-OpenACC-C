@@ -104,14 +104,14 @@ C_INC =
 # _LARGEFILE64_SOURCE - are standard compiler flags which allow to work with 
 # files larger than 2GB.
 #---------------------------------------------------------------------------
-CFLAGS	= -D_OMP4 --ompss --variable=acc_enabled:1 -kk 
+CFLAGS	= -D_OMP4 --ompss --variable=acc_enabled:1 -I../common -kk 
 #-g -pg -O3 -fopenmp #-mcmodel=medium
 
 #---------------------------------------------------------------------------
 # Global *link time* flags. Flags for increasing maximum executable 
 # size usually go here. 
 #---------------------------------------------------------------------------
-CLINKFLAGS = -D_OMP4 --ompss --variable=acc_enabled:1  -kk 
+CLINKFLAGS = -D_OMP4 --ompss --variable=acc_enabled:1  #-kk 
 #-g -pg -O3 -fopenmp #-mcmodel=medium
 
 
