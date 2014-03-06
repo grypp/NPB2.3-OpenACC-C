@@ -1,3 +1,12 @@
+/*************************************************************************
+ *                                                                       *
+ *             		  NAS PARALLEL BENCHMARKS 2.3          		         *
+ *                                                                       *
+ *                   OmpSs OMP4 Accelerator Version                      *
+ *                                                                       *
+ *                              EP                                       *
+ *                                                                       *
+ *************************************************************************
 /*--------------------------------------------------------------------
   
   NAS Parallel Benchmarks 2.3 OpenACC C versions - EP
@@ -23,7 +32,8 @@
           A. C. Woo
 
   OpenMP C version: S. Satoh
-  OpenACC C version: P. Makpaisit
+  OpenACC C version: P. Makpaisit and Guray Ozen
+  OmpSs-OMP4 C version: Guray Ozen
   
 --------------------------------------------------------------------*/
 
@@ -139,9 +149,11 @@ c   the x-array to reduce the effects of paging on the timings.
 c   Also, call all mathematical functions that are used. Make
 c   sure these initializations cannot be eliminated as dead code.
 */
+/*
 #pragma acc data create(qq[0:NN][0:NQ],x[0:2*NK],xx[0:NN][0:2*NK]) \
     copyout(q[0:NQ])
-{
+*/
+
     vranlc(0, &(dum[0]), dum[1], &(dum[2]));
     dum[0] = randlc(&(dum[1]), dum[2]);
     for (i = 0; i < 2*NK; i++) x[i] = -1.0e99;
@@ -153,7 +165,6 @@ c   sure these initializations cannot be eliminated as dead code.
     timer_start(1);
 
     vranlc(0, &t1, A, x);
-    #pragma acc update device(x[0:2*NK])
 
 /*   Compute AN = A ^ (2 * NK) (mod 2^46). */
 
@@ -168,18 +179,22 @@ c   sure these initializations cannot be eliminated as dead code.
     gc = 0.0;
     sx = 0.0;
     sy = 0.0;
-    
-    #pragma acc parallel loop
+
+    int nq=NQ;
+    int nk=NK;
+
+/*    #pragma omp target device(acc) copy_in(np,nq,nk) copy_deps
+	#pragma omp task out(xx[np][nk*2],qq[np][nq]) in(x[2*nk])
+	#pragma omp teams
+	#pragma omp distribute parallel for
     for (k = 0; k < np; k++) {
-      /* Initialize private q (qq) */
-      #pragma acc loop
-      for (i = 0; i < NQ; i++)
+		#pragma omp parallel for
+    	for (i = 0; i < NQ; i++)
           qq[k][i] = 0.0;
-      /* Initialize private x (xx)  */
-      #pragma acc loop
-      for (i = 0; i < 2*NK; i++)
+		#pragma omp parallel for
+    	for (i = 0; i < 2*NK; i++)
           xx[k][i] = x[i];
-    }
+    }*/
       
 /*
 c   Each instance of this loop may be performed independently. We compute
@@ -188,75 +203,80 @@ c   have more numbers to generate than others
 */
     k_offset = -1;
 
-    double t1, t2, t3, t4, x1, x2;
-    int kk, i, ik, l;
-    double psx, psy;
 
-    #pragma acc parallel loop reduction(+:sx,sy)
-    for (k = 1; k <= np; k++) {
-      kk = k_offset + k;
-      t1 = S;
-      t2 = an;
 
-/*      Find starting seed t1 for this kk. */
+	#pragma omp target device(acc) copy_in(np,nq,nk) copy_deps
+	#pragma omp task out(xx[np][nk*2],qq[np][nq])
+	#pragma omp teams
+	#pragma omp distribute parallel for reduction(+:sx,sy)
+    for (k = 1; k <= np; k++)
+    {
+		double t1, t2, t3, t4, x1, x2;
+		int kk, i, ik, l;
+		double psx, psy;
 
-      #pragma acc loop seq
-      for (i = 1; i <= 100; i++) {
-          ik = kk / 2;
-          if (2 * ik != kk) t3 = RANDLC(&t1, t2);
-          if (ik == 0) break;
-          t3 = RANDLC(&t2, t2);
-          kk = ik;
-      }
 
-/*      Compute uniform pseudorandom numbers. */
+		  kk = k_offset + k;
+		  t1 = S;
+		  t2 = an;
 
-      loc_t1 = r23 * A;
-      loc_a1 = (int)loc_t1;
-      loc_a2 = A - t23 * loc_a1;
-      loc_x = t1;
+	/*      Find starting seed t1 for this kk. */
+		  for (i = 1; i <= 100; i++) {
+			  ik = kk / 2;
+			  if (2 * ik != kk) t3 = RANDLC(&t1, t2);
+			  //if (ik == 0) break;
+			  t3 = RANDLC(&t2, t2);
+			  kk = ik;
+		  }
 
-      #pragma acc loop seq
-      for (i = 1; i <= 2*NK; i++) {
-          loc_t1 = r23 * loc_x;
-          loc_x1 = (int)loc_t1;
-          loc_x2 = loc_x - t23 * loc_x1;
-          loc_t1 = loc_a1 * loc_x2 + loc_a2 * loc_x1;
-          loc_t2 = (int)(r23 * loc_t1);
-          loc_z = loc_t1 - t23 * loc_t2;
-          loc_t3 = t23 * loc_z + loc_a2 * loc_x2;
-          loc_t4 = (int)(r46 * loc_t3);
-          loc_x = loc_t3 - t46 * loc_t4;
-          xx[k-1][i-1] = r46 * loc_x;
-      }
-      t1 = loc_x;
+	/*      Compute uniform pseudorandom numbers. */
 
-/*
-c       Compute Gaussian deviates by acceptance-rejection method and 
-c       tally counts in concentric square annuli.  This loop is not 
-c       vectorizable.
-*/
- 
-      psx = psy = 0.0;
+		  loc_t1 = r23 * A;
+		  loc_a1 = (int)loc_t1;
+		  loc_a2 = A - t23 * loc_a1;
+		  loc_x = t1;
 
-      #pragma acc loop reduction(+:psx,psy)
-      for ( i = 0; i < NK; i++) {
-          x1 = 2.0 * xx[k-1][2*i] - 1.0;
-          x2 = 2.0 * xx[k-1][2*i+1] - 1.0;
-          t1 = pow2(x1) + pow2(x2);
-          if (t1 <= 1.0) {
-            t2 = sqrt(-2.0 * log(t1) / t1);
-            t3 = (x1 * t2);             /* Xi */
-            t4 = (x2 * t2);             /* Yi */
-            l = max(fabs(t3), fabs(t4));
-            qq[k-1][l] += 1.0;                      /* counts */
-            psx = psx + t3;  /* sum of Xi */
-            psy = psy + t4;               /* sum of Yi */
-          }
-      }
+		  #pragma omp parallel for
+		  for (i = 1; i <= 2*NK; i++) {
+			  loc_t1 = r23 * loc_x;
+			  loc_x1 = (int)loc_t1;
+			  loc_x2 = loc_x - t23 * loc_x1;
+			  loc_t1 = loc_a1 * loc_x2 + loc_a2 * loc_x1;
+			  loc_t2 = (int)(r23 * loc_t1);
+			  loc_z = loc_t1 - t23 * loc_t2;
+			  loc_t3 = t23 * loc_z + loc_a2 * loc_x2;
+			  loc_t4 = (int)(r46 * loc_t3);
+			  loc_x = loc_t3 - t46 * loc_t4;
+			  xx[k-1][i-1] = r46 * loc_x;
+		  }
+		  t1 = loc_x;
 
-      sx += psx;
-      sy += psy;
+	/*
+	c       Compute Gaussian deviates by acceptance-rejection method and
+	c       tally counts in concentric square annuli.  This loop is not
+	c       vectorizable.
+	*/
+
+		  psx = psy = 0.0;
+
+		  #pragma omp parallel for reduction(+:psx,psy)
+		  for ( i = 0; i < NK; i++) {
+			  x1 = 2.0 * xx[k-1][2*i] - 1.0;
+			  x2 = 2.0 * xx[k-1][2*i+1] - 1.0;
+			  t1 = pow2(x1) + pow2(x2);
+			  if (t1 <= 1.0) {
+				t2 = sqrt(-2.0 * log(t1) / t1);
+				t3 = (x1 * t2);             /* Xi */
+				t4 = (x2 * t2);             /* Yi */
+				l = max(fabs(t3), fabs(t4));
+				qq[k-1][l] += 1.0;                      /* counts */
+				psx = psx + t3;  /* sum of Xi */
+				psy = psy + t4;               /* sum of Yi */
+			  }
+		  }
+
+		  sx += psx;
+		  sy += psy;
       
     }
     
@@ -271,7 +291,6 @@ c       vectorizable.
       gc += sumq;
     }
 
-} /* end acc data */
 
     timer_stop(1);
     tm = timer_read(1);

@@ -30,6 +30,7 @@
   Authors: M. Yarrow
            C. Kuszmaul
 
+
   OpenMP C version: S. Satoh
   OpenACC C version: P. Makpaisit and Guray Ozen
   OmpSs-OMP4 C version: Guray Ozen
