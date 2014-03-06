@@ -34,7 +34,8 @@
   OpenACC C version: P. Makpaisit and Guray Ozen
   OmpSs-OMP4 C version: Guray Ozen
   OpenMP C version: S. Satoh
-  
+
+
 --------------------------------------------------------------------*/
 
 /*
